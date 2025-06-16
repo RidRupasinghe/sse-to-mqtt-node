@@ -1,20 +1,26 @@
-require('dotenv').config();
-const mqtt = require('mqtt');
+import dotenv from 'dotenv';
+import mqtt, { MqttClient } from 'mqtt';
+
+dotenv.config();
 
 const {
   MQTT_BROKER_URL,
   MQTT_USERNAME,
   MQTT_PASSWORD,
   MQTT_TOPIC
-} = process.env;
+} = process.env as {
+  MQTT_BROKER_URL: string;
+  MQTT_USERNAME: string;
+  MQTT_PASSWORD: string;
+  MQTT_TOPIC: string;
+};
 
-let mqttClient;
+let mqttClient: MqttClient;
 
 function connect() {
   if (mqttClient && mqttClient.connected) return;
 
   mqttClient = mqtt.connect(MQTT_BROKER_URL, {
-    ssl: true,
     username: MQTT_USERNAME,
     password: MQTT_PASSWORD
   });
@@ -35,7 +41,7 @@ function connect() {
 
 connect();
 
-function publishToMQTT(message) {
+export function publishToMQTT(message: any) {
   if (mqttClient && mqttClient.connected) {
     mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
       if (err) {
@@ -48,7 +54,3 @@ function publishToMQTT(message) {
     console.warn('⚠️ MQTT not connected. Skipping message:', message);
   }
 }
-
-module.exports = {
-  publishToMQTT
-};

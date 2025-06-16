@@ -1,10 +1,10 @@
-require('dotenv').config();
+import dotenv from 'dotenv';
+import axios from 'axios';
+import qs from 'qs';
+import readline from 'readline';
+import { publishToMQTT } from './mqttPublisher';
 
-const readline = require('readline');
-const qs = require('qs');
-const axios = require('axios');
-
-const { publishToMQTT } = require('./mqttPublisher');
+dotenv.config();
 
 const {
   AUTHENTICATION_URL,
@@ -12,7 +12,14 @@ const {
   CLIENT_SECRET,
   CLIENT_SCOPE,
   STREAMING_ENDPOINT
-} = process.env;
+} = process.env as {
+  AUTHENTICATION_URL: string;
+  CLIENT_ID: string;
+  CLIENT_SECRET: string;
+  CLIENT_SCOPE: string;
+  STREAMING_ENDPOINT: string;
+};
+
 
 async function getBearerToken() {
   try {
@@ -31,7 +38,7 @@ async function getBearerToken() {
 
     console.log('✅ Bearer token retrieved');
     return response.data.access_token || response.data.token;
-  } catch (err) {
+  } catch (err: any) {
     console.error('❌ Failed to fetch token:', err.message);
     throw err;
   }
@@ -75,7 +82,7 @@ async function getBarentswatchData(retryCount = 0) {
       crlfDelay: Infinity
     });
 
-    rl.on('line', (line) => {
+    rl.on('line', (line: string) => {
       if (line.startsWith('data:')) {
         const eventData = line.replace(/^data:\s*/, '');
         // console.log('📥 SSE Event:', eventData);
@@ -88,18 +95,18 @@ async function getBarentswatchData(retryCount = 0) {
       retryWithBackoff(retryCount);
     });
 
-    response.data.on('error', (err) => {
+    response.data.on('error', (err: Error) => {
       console.error('❌ SSE stream error:', err.message);
       rl.close();
     });
 
-  } catch (err) {
+  } catch (err: any) {
     console.error('❌ SSE connection failed:', err.message);
     retryWithBackoff(retryCount);
   }
 }
 
-function retryWithBackoff(retryCount) {
+function retryWithBackoff(retryCount: number): void {
   const delay = Math.min(30000, 2000 * Math.pow(2, retryCount));
   console.log(`🔁 Retrying in ${delay / 1000}s...`);
   setTimeout(() => getBarentswatchData(retryCount + 1), delay);
@@ -108,9 +115,9 @@ function retryWithBackoff(retryCount) {
 async function start() {
   try {
     await getBarentswatchData();
-  } catch (err) {
+  } catch (err: any) {
     console.error('❌ Startup failed:', err.message);
   }
 }
 
-start();
+getBarentswatchData();
