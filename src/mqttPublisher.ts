@@ -1,56 +1,47 @@
-import dotenv from 'dotenv';
 import mqtt, { MqttClient } from 'mqtt';
+import dotenv from 'dotenv';
 
 dotenv.config();
 
-const {
-  MQTT_BROKER_URL,
-  MQTT_USERNAME,
-  MQTT_PASSWORD,
-  MQTT_TOPIC
-} = process.env as {
-  MQTT_BROKER_URL: string;
-  MQTT_USERNAME: string;
-  MQTT_PASSWORD: string;
-  MQTT_TOPIC: string;
-};
+export class MQTTPublisher {
+  private client: MqttClient;
+  private readonly topic: string;
 
-let mqttClient: MqttClient;
+  constructor() {
+    const { MQTT_BROKER_URL, MQTT_USERNAME, MQTT_PASSWORD, MQTT_TOPIC } = process.env;
 
-function connect() {
-  if (mqttClient && mqttClient.connected) return;
+    if (!MQTT_BROKER_URL || !MQTT_TOPIC) {
+      throw new Error("Missing MQTT configuration in .env");
+    }
 
-  mqttClient = mqtt.connect(MQTT_BROKER_URL, {
-    username: MQTT_USERNAME,
-    password: MQTT_PASSWORD
-  });
+    this.topic = MQTT_TOPIC;
 
-  mqttClient.on('connect', () => {
-    console.log('✅ Connected to MQTT broker');
-  });
+    this.client = mqtt.connect(MQTT_BROKER_URL, {
+      username: MQTT_USERNAME,
+      password: MQTT_PASSWORD
+    });
 
-  mqttClient.on('error', (err) => {
-    console.error('❌ MQTT connection error:', err.message);
-  });
+    this.client.on('connect', () => {
+      console.log('✅ Connected to MQTT broker');
+    });
 
-  mqttClient.on('close', () => {
-    console.warn('⚠️ MQTT connection closed. Attempting reconnect...');
-    setTimeout(connect, 3000);
-  });
-}
+    this.client.on('error', (err) => {
+      console.error('❌ MQTT connection error:', err.message);
+    });
+  }
 
-connect();
+  publish(message: string) {
+    if (!this.client.connected) {
+      console.warn('⚠️ MQTT client not connected. Skipping publish.');
+      return;
+    }
 
-export function publishToMQTT(message: any) {
-  if (mqttClient && mqttClient.connected) {
-    mqttClient.publish(MQTT_TOPIC, message, { qos: 0 }, (err) => {
+    this.client.publish(this.topic, message, { qos: 0 }, (err) => {
       if (err) {
         console.error('❌ MQTT publish error:', err.message);
       } else {
-        console.log(`🚀 Published to MQTT topic: ${MQTT_TOPIC} => ${message}`);
+        console.log(`🚀 Published to MQTT topic: ${this.topic}`);
       }
     });
-  } else {
-    console.warn('⚠️ MQTT not connected. Skipping message:', message);
   }
 }
