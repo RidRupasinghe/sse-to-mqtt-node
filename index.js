@@ -3,8 +3,6 @@ require('dotenv').config();
 const readline = require('readline');
 const qs = require('qs');
 const axios = require('axios');
-const EventSource = require('eventsource');
-const mqtt = require('mqtt');
 
 const {
   AUTHENTICATION_URL,
@@ -17,21 +15,19 @@ const {
 async function getBearerToken() {
   try {
     const formData = qs.stringify({
-      "client_id": CLIENT_ID,
-      "scope": CLIENT_SCOPE,
-      "client_secret": CLIENT_SECRET,
-      "grant_type": "client_credentials"
+      client_id: CLIENT_ID,
+      scope: CLIENT_SCOPE,
+      client_secret: CLIENT_SECRET,
+      grant_type: 'client_credentials'
     });
-
 
     const response = await axios.post(AUTHENTICATION_URL, formData, {
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'x-custom-header': 'your-header-value'
+        'Content-Type': 'application/x-www-form-urlencoded'
       }
     });
 
-    console.log('✅ Bearer token retrieved ');
+    console.log('✅ Bearer token retrieved');
     return response.data.access_token || response.data.token;
   } catch (err) {
     console.error('❌ Failed to fetch token:', err.message);
@@ -39,38 +35,38 @@ async function getBearerToken() {
   }
 }
 
-async function getBarentswatchData() {
-  const bearerToken = await getBearerToken();
-
-  const headers = {
-    Authorization: `Bearer ${bearerToken}`,
-    'Content-Type': 'application/json',
-    Accept: 'text/event-stream'
-  };
-
-  const postData = {
-    modelType: "Simple",
-    geometry: {
-      type: "Polygon",
-      coordinates: [[
-        [10.122744898278713, 63.43448467991965],
-        [10.212844898278713, 63.43448467991965],
-        [10.212844898278713, 63.52458467991965],
-        [10.122744898278713, 63.52458467991965],
-        [10.122744898278713, 63.43448467991965]
-      ]]
-    },
-    modelFormat: "Json",
-    downsample: false
-  };
-
+async function getBarentswatchData(retryCount = 0) {
   try {
+    const bearerToken = await getBearerToken();
+
+    const headers = {
+      Authorization: `Bearer ${bearerToken}`,
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream'
+    };
+
+    const postData = {
+      modelType: "Simple",
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [10.122744898278713, 63.43448467991965],
+          [10.212844898278713, 63.43448467991965],
+          [10.212844898278713, 63.52458467991965],
+          [10.122744898278713, 63.52458467991965],
+          [10.122744898278713, 63.43448467991965]
+        ]]
+      },
+      modelFormat: "Json",
+      downsample: false
+    };
+
     const response = await axios.post(STREAMING_ENDPOINT, postData, {
       headers,
       responseType: 'stream'
     });
 
-    console.log('📡 Connected to SSE (POST)');
+    console.log('📡 Connected to SSE');
 
     const rl = readline.createInterface({
       input: response.data,
@@ -85,19 +81,30 @@ async function getBarentswatchData() {
     });
 
     rl.on('close', () => {
-      console.log('🔌 SSE stream closed');
-      getBarentswatchData();
+      console.warn('🔌 SSE stream closed. Reconnecting...');
+      retryWithBackoff(retryCount);
+    });
+
+    response.data.on('error', (err) => {
+      console.error('❌ SSE stream error:', err.message);
+      rl.close(); // Triggers reconnection
     });
 
   } catch (err) {
-    console.error('❌ SSE POST stream failed:', err.response?.data || err.message);
+    console.error('❌ SSE connection failed:', err.message);
+    retryWithBackoff(retryCount);
   }
+}
 
+function retryWithBackoff(retryCount) {
+  const delay = Math.min(30000, 2000 * Math.pow(2, retryCount));
+  console.log(`🔁 Retrying in ${delay / 1000}s...`);
+  setTimeout(() => getBarentswatchData(retryCount + 1), delay);
 }
 
 async function start() {
   try {
-    getBarentswatchData();
+    await getBarentswatchData();
   } catch (err) {
     console.error('❌ Startup failed:', err.message);
   }
