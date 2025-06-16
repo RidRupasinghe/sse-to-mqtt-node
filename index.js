@@ -4,6 +4,8 @@ const readline = require('readline');
 const qs = require('qs');
 const axios = require('axios');
 
+const { publishToMQTT } = require('./mqttPublisher');
+
 const {
   AUTHENTICATION_URL,
   CLIENT_ID,
@@ -76,7 +78,8 @@ async function getBarentswatchData(retryCount = 0) {
     rl.on('line', (line) => {
       if (line.startsWith('data:')) {
         const eventData = line.replace(/^data:\s*/, '');
-        console.log('📥 SSE Event:', eventData);
+        // console.log('📥 SSE Event:', eventData);
+        publishToMQTT(eventData);
       }
     });
 
@@ -87,7 +90,7 @@ async function getBarentswatchData(retryCount = 0) {
 
     response.data.on('error', (err) => {
       console.error('❌ SSE stream error:', err.message);
-      rl.close(); // Triggers reconnection
+      rl.close();
     });
 
   } catch (err) {
