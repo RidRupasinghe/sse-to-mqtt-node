@@ -3,6 +3,7 @@ import axios from 'axios';
 import readline from 'readline';
 import qs from 'qs';
 import { MQTTPublisher } from './mqttPublisher';
+import coordinateSets from './ferry_connection'
 
 dotenv.config();
 
@@ -11,6 +12,13 @@ export class BarentswatchStreamer {
 
   constructor() {
     this.publisher = new MQTTPublisher();
+  }
+
+  public async startMultipleStreams(namedCoordinateSets: { name: string; coordinates: number[][] }[]) {
+    const bearerToken = await this.getBearerToken();
+    for (const { name, coordinates } of namedCoordinateSets) {
+      this.getBarentswatchData(name, coordinates); // async fire-and-forget
+    }
   }
 
   private async getBearerToken(): Promise<string> {
@@ -33,13 +41,7 @@ export class BarentswatchStreamer {
     return response.data.access_token || response.data.token;
   }
 
-  private retryWithBackoff(retryCount: number) {
-    const delay = Math.min(30000, 2000 * Math.pow(2, retryCount));
-    console.log(`🔁 Retrying in ${delay / 1000}s...`);
-    setTimeout(() => this.getBarentswatchData(retryCount + 1), delay);
-  }
-
-  public async getBarentswatchData(retryCount = 0): Promise<void> {
+  public async getBarentswatchData(name: string, coordinates: number[][], retryCount = 0): Promise<void> {
     try {
       const bearerToken = await this.getBearerToken();
 
@@ -53,13 +55,7 @@ export class BarentswatchStreamer {
         modelType: "Full",
         geometry: {
           type: "Polygon",
-          coordinates: [[
-            [10.122744898278713, 63.43448467991965],
-            [10.212844898278713, 63.43448467991965],
-            [10.212844898278713, 63.52458467991965],
-            [10.122744898278713, 63.52458467991965],
-            [10.122744898278713, 63.43448467991965]
-          ]]
+          coordinates: [coordinates]
         },
         modelFormat: "Json",
         downsample: false
@@ -70,7 +66,7 @@ export class BarentswatchStreamer {
         responseType: 'stream'
       });
 
-      console.log('📡 Connected to SSE');
+      console.log(`📡 Connected to SSE for "${name}"`);
 
       const rl = readline.createInterface({
         input: response.data,
@@ -80,26 +76,32 @@ export class BarentswatchStreamer {
       rl.on('line', (line: string) => {
         if (line.startsWith('data:')) {
           const eventData = line.replace(/^data:\s*/, '');
-          this.publisher.publish(eventData);
+          this.publisher.publish(eventData, name);
         }
       });
 
       rl.on('close', () => {
-        console.warn('🔌 SSE stream closed. Reconnecting...');
-        this.retryWithBackoff(retryCount);
+        console.warn(`🔌 SSE stream closed for "${name}". Reconnecting...`);
+        this.retryWithBackoffCoordinates(name, coordinates, retryCount);
       });
 
       response.data.on('error', (err: any) => {
-        console.error('❌ SSE stream error:', err.message);
+        console.error(`❌ SSE stream error for "${name}":`, err.message);
         rl.close();
       });
 
     } catch (err: any) {
-      console.error('❌ SSE connection failed:', err.message);
-      this.retryWithBackoff(retryCount);
+      console.error(`❌ SSE connection failed for "${name}":`, err.message);
+      this.retryWithBackoffCoordinates(name, coordinates, retryCount);
     }
+  }
+
+  private retryWithBackoffCoordinates(name: string, coordinates: number[][], retryCount: number) {
+    const delay = Math.min(30000, 2000 * Math.pow(2, retryCount));
+    console.log(`🔁 Retrying "${name}" in ${delay / 1000}s...`);
+    setTimeout(() => this.getBarentswatchData(name, coordinates, retryCount + 1), delay);
   }
 }
 
 const streamer = new BarentswatchStreamer();
-streamer.getBarentswatchData();
+streamer.startMultipleStreams(coordinateSets);

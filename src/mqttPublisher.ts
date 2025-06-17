@@ -30,14 +30,14 @@ export class MQTTPublisher {
     });
   }
 
-  publish(message: string) {
+  publish(message: string, ferry_connection: string) {
     if (!this.client.connected) {
       console.warn('⚠️ MQTT client not connected. Skipping publish.');
       return;
     }
 
     const jsonData = JSON.parse(message);
-    const topic = this.topic + `/${jsonData.imoNumber}`
+    const topic = this.topic + `/${ferry_connection}/${jsonData.imoNumber}`
 
     this.client.publish(topic, message, { qos: 0 }, (err) => {
       if (err) {
