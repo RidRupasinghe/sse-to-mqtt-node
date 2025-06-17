@@ -37,10 +37,11 @@ export class MQTTPublisher {
     }
 
     this.client.publish(this.topic, message, { qos: 0 }, (err) => {
+      console.log(message)
       if (err) {
         console.error('❌ MQTT publish error:', err.message);
       } else {
-        console.log(`🚀 Published to MQTT topic: ${this.topic}`);
+        console.log(`🚀 Published to MQTT topic: ${this.topic}, Message: ${message}`);
       }
     });
   }
