@@ -50,7 +50,7 @@ export class BarentswatchStreamer {
       };
 
       const postData = {
-        modelType: "Simple",
+        modelType: "Full",
         geometry: {
           type: "Polygon",
           coordinates: [[
