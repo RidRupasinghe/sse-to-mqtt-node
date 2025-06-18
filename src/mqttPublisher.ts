@@ -30,16 +30,13 @@ export class MQTTPublisher {
         });
     }
 
-    private parse: any;
-
     publish(message: string, ferry_connection: string) {
         if (!this.client.connected) {
             console.warn('⚠️ MQTT client not connected. Skipping publish.');
             return;
         }
 
-        this.parse = JSON.parse(message);
-        const jsonData = this.parse;
+        const jsonData = JSON.parse(message);
 
         if (jsonData == null || jsonData.imoNumber == null) {
             return;

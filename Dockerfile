@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:16-alpine
 LABEL authors="rid"
 
 WORKDIR /app
@@ -11,5 +11,3 @@ COPY . .
 RUN npm run build
 
 CMD ["npm", "start"]
-
-ENTRYPOINT ["top", "-b"]
