@@ -15,7 +15,6 @@ export class BarentswatchStreamer {
     }
 
     public async startMultipleStreams(namedCoordinateSets: { name: string; coordinates: number[][] }[]) {
-        const bearerToken = await this.getBearerToken();
         for (const {name, coordinates} of namedCoordinateSets) {
             this.getBarentswatchData(name, coordinates); // async fire-and-forget
         }
@@ -48,7 +47,8 @@ export class BarentswatchStreamer {
             const headers = {
                 Authorization: `Bearer ${bearerToken}`,
                 'Content-Type': 'application/json',
-                Accept: 'text/event-stream'
+                Accept: 'text/event-stream',
+                Connection: 'keep-alive',
             };
 
             const postData = {
@@ -90,6 +90,15 @@ export class BarentswatchStreamer {
                 rl.close();
             });
 
+            response.data.on('aborted', () => {
+                console.warn(`⚠️ Stream aborted for "${name}". Retrying...`);
+                rl.close();
+            });
+
+            response.data.on('end', () => {
+                console.warn(`📴 Stream ended for "${name}". Reconnecting...`);
+                rl.close();
+            });
         } catch (err: any) {
             console.error(`❌ SSE connection failed for "${name}":`, err.message);
             this.retryWithBackoffCoordinates(name, coordinates, retryCount);

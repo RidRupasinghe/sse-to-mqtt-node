@@ -28,28 +28,56 @@ export class MQTTPublisher {
         this.client.on('error', (err) => {
             console.error('❌ MQTT connection error:', err.message);
         });
+
+        this.client.on('close', () => {
+            console.warn('📴 MQTT client disconnected');
+        });
+
+        this.client.on('reconnect', () => {
+            console.log('🔄 MQTT client reconnecting...');
+        });
     }
+
+    private _publishMessage(message: string, ferry_connection: string) {
+        try {
+            const jsonData = JSON.parse(message);
+            if (!jsonData || !jsonData.imoNumber) return;
+
+            const topic = `${this.topic}/${ferry_connection}/${jsonData.imoNumber}`;
+
+            this.client.publish(topic, message, {qos: 0}, (err) => {
+                if (err) {
+                    console.error('❌ MQTT publish error:', err.message);
+                } else {
+                    console.log(`🚀 Published to MQTT topic: ${topic}, Message: ${jsonData.imoNumber}`);
+                }
+            });
+        } catch (e) {
+            console.error('❌ Error parsing or publishing MQTT message:', (e as Error).message);
+        }
+    }
+
 
     publish(message: string, ferry_connection: string) {
         if (!this.client.connected) {
-            console.warn('⚠️ MQTT client not connected. Skipping publish.');
+            console.warn('⚠️ MQTT client not connected. Attempting to reconnect...');
+
+            this.client.reconnect(); // triggers reconnect event if disconnected
+
+            // Wait for reconnection before trying to publish
+            this.client.once('connect', () => {
+                console.log('🔌 Reconnected to MQTT broker. Publishing message...');
+                this._publishMessage(message, ferry_connection);
+            });
+
+            this.client.once('error', (err) => {
+                console.error('❌ Failed to reconnect to MQTT broker:', err.message);
+            });
+
             return;
         }
 
-        const jsonData = JSON.parse(message);
-
-        if (jsonData == null || jsonData.imoNumber == null) {
-            return;
-        }
-
-        const topic = this.topic + `/${ferry_connection}/${jsonData.imoNumber}`
-
-        this.client.publish(topic, message, {qos: 0}, (err) => {
-            if (err) {
-                console.error('❌ MQTT publish error:', err.message);
-            } else {
-                console.log(`🚀 Published to MQTT topic: ${topic}, Message: ${jsonData.imoNumber}`);
-            }
-        });
+        this._publishMessage(message, ferry_connection);
     }
+
 }
