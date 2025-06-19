@@ -16,7 +16,7 @@ export class BarentswatchStreamer {
 
     public async startMultipleStreams(namedCoordinateSets: { name: string; coordinates: number[][] }[]) {
         for (const {name, coordinates} of namedCoordinateSets) {
-            this.getBarentswatchData(name, coordinates); // async fire-and-forget
+            await this.getBarentswatchData(name, coordinates); // async fire-and-forget
         }
     }
 
