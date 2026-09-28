@@ -67,7 +67,7 @@ export function loadConnectionsConfig(path: string): SseConnection[] {
   try {
     parsed = JSON.parse(fs.readFileSync(path, 'utf8'));
   } catch (error: unknown) {
-    throw new Error(`Failed to read connections config "${path}": ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`Failed to read connections config "${path}": ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 
   if (!Array.isArray(parsed) || parsed.length === 0) {

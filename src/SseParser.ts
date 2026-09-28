@@ -27,7 +27,7 @@ export class SseParser {
   public push(line: string): void {
     if (this.firstLine) {
       this.firstLine = false;
-      line = line.replace(/^﻿/, '');
+      line = line.replace(/^\uFEFF/, '');
     }
 
     if (line === '') {
