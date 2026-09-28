@@ -4,3 +4,5 @@
 .env
  .env
 mosquitto/
+*.DS_Store
+

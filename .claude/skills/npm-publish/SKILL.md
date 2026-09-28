@@ -46,6 +46,8 @@ git push && git push --tags
 
 `npm whoami` must succeed first. If the user isn't logged in, ask them to run `! npm login` themselves.
 
+The normal path is a GitHub release (see the "Releasing sse-to-mqtt-node" doc): it runs both `publish-npm.yml` and `publish-docker.yml`. Before releasing, also check the image locally: `docker build -t sse-to-mqtt-node:test .`, then `docker run --rm sse-to-mqtt-node:test --version` prints the new version and `docker run --rm --entrypoint id sse-to-mqtt-node:test -un` prints `node`. After the release, `docker pull ghcr.io/ridrupasinghe/sse-to-mqtt-node:<version>` should work.
+
 ## 5. Report
 
 Give the published name@version, the `npm pack` file list, and anything skipped.

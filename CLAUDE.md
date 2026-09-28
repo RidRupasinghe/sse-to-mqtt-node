@@ -13,7 +13,9 @@ This repo is **not** tied to any data provider. Provider-specific details (reque
 - `npm run dev`: run the CLI from source with nodemon + ts-node
 - `npm start`: run the built CLI (`dist/cli.js`)
 
-A throwaway broker for integration tests: `docker run -d -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf`. CI (`.github/workflows/ci.yml`) runs all of the above on Node 22 and 24 and checks the npm package contents.
+A throwaway broker for integration tests: `docker run -d -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf`. CI (`.github/workflows/ci.yml`) runs all of the above on Node 22 and 24, checks the npm package contents, and builds the Docker image.
+
+Releases: publishing a GitHub release runs `publish-npm.yml` (npm, trusted publishing) and `publish-docker.yml` (`ghcr.io/ridrupasinghe/sse-to-mqtt-node`, amd64 + arm64). The `Dockerfile` is a two-stage build; `.dockerignore` is an allow-list, so a new file the image needs must be added to it. The image never contains a connections config; users mount one at `/config/connections.json`.
 
 ## Layout
 

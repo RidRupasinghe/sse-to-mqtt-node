@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Docker image published to `ghcr.io/ridrupasinghe/sse-to-mqtt-node` for `linux/amd64` and `linux/arm64` on each release.
+
+### Changed
+
+- The Docker image no longer includes a connections config; mount one at `/config/connections.json`. It is smaller (production dependencies only), runs as a non-root user and handles `docker stop` gracefully.
+
 ## [0.1.1] - 2026-09-28
 
 First public release.
