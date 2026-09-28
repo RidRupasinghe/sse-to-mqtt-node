@@ -1,5 +1,4 @@
-import axios, { AxiosError } from 'axios';
-import qs from 'qs';
+import { HttpError, describeError } from './errors';
 
 export enum BodyType {
   Json = 'application/json',
@@ -38,14 +37,22 @@ export class BearerTokenProvider<TBody extends object = Record<string, unknown>>
 
   public async getBearerToken(): Promise<string> {
     try {
-      const response = await axios.post<TokenResponse>(this.url, this.serializeBody(), {
+      const response = await fetch(this.url, {
+        method: 'POST',
         headers: {
+          Accept: 'application/json',
           ...this.headers,
           'Content-Type': this.bodyType
-        }
+        },
+        body: this.serializeBody()
       });
 
-      const token = this.extractToken(response.data);
+      if (!response.ok) {
+        throw new HttpError(response.status, response.statusText, this.url);
+      }
+
+      const data: unknown = await response.json();
+      const token = this.extractToken(data);
 
       if (!token) {
         throw new Error(`Token response did not contain any of: ${this.tokenFields.join(', ')}`);
@@ -54,7 +61,7 @@ export class BearerTokenProvider<TBody extends object = Record<string, unknown>>
       console.log('✅ Bearer token retrieved');
       return token;
     } catch (error: unknown) {
-      console.error('❌ Failed to retrieve bearer token:', BearerTokenProvider.describeError(error));
+      console.error('❌ Failed to retrieve bearer token:', describeError(error));
       throw error;
     }
   }
@@ -64,24 +71,34 @@ export class BearerTokenProvider<TBody extends object = Record<string, unknown>>
       case BodyType.Json:
         return JSON.stringify(this.body);
       case BodyType.FormUrlEncoded:
-        return qs.stringify(this.body);
+        return BearerTokenProvider.toFormUrlEncoded(this.body);
     }
   }
 
-  private extractToken(data: TokenResponse): string | undefined {
+  // Form bodies are flat: undefined/null fields are omitted, nested objects are rejected
+  private static toFormUrlEncoded(body: object): string {
+    const params = new URLSearchParams();
+
+    for (const [key, value] of Object.entries(body)) {
+      if (value === undefined || value === null) continue;
+      if (typeof value === 'object') {
+        throw new Error(`Form-encoded token body field "${key}" must be a primitive value`);
+      }
+      params.append(key, String(value));
+    }
+
+    return params.toString();
+  }
+
+  private extractToken(data: unknown): string | undefined {
+    if (data === null || typeof data !== 'object') return undefined;
+
     for (const field of this.tokenFields) {
-      const value = data[field];
+      const value = (data as TokenResponse)[field];
       if (typeof value === 'string' && value) {
         return value;
       }
     }
     return undefined;
-  }
-
-  private static describeError(error: unknown): string {
-    if (error instanceof AxiosError) {
-      return `${error.message}${error.response ? ` (status ${error.response.status})` : ''}`;
-    }
-    return error instanceof Error ? error.message : String(error);
   }
 }

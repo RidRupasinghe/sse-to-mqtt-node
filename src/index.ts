@@ -11,3 +11,5 @@ export { BearerTokenProvider, BodyType } from './BearerTokenProvider';
 export type { BearerTokenProviderOptions } from './BearerTokenProvider';
 
 export { loadConnectionsConfig } from './connectionsConfig';
+
+export { HttpError, describeError } from './errors';
