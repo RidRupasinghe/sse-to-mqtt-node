@@ -3,6 +3,7 @@ import { MqttPublisher, MqttPublisherOptions } from './MqttPublisher';
 import { RetryOptions, SseDataProvider, SseRequest, TokenProvider } from './SseDataProvider';
 import { SseEvent } from './SseParser';
 import { describeError } from './errors';
+import { resolveTopicTemplates, validateTopicTemplate } from './topicTemplate';
 import { Logger, defaultLogger } from './logger';
 
 export type TopicSegments = string | string[];
@@ -13,9 +14,10 @@ export type TopicResolver = (data: string, connectionName: string) => TopicSegme
 export type SseConnection<TBody extends object = Record<string, unknown>> = SseRequest<TBody> & {
   name: string;
   headers?: Record<string, string>;
-  // Defaults to the connection name. String topics may contain placeholders:
+  // Defaults to "{name}". String topics may contain placeholders:
   // {name} for the connection name, or {field.path} for a field of the JSON message.
-  // Messages where a placeholder cannot be resolved are skipped.
+  // Messages where a placeholder cannot be resolved are skipped. Placeholder values
+  // have +, #, / and NUL replaced with _.
   topic?: TopicSegments | TopicResolver;
 };
 
@@ -42,28 +44,6 @@ export interface SseToMqttBridgeEvents {
   error: [error: Error, connection: string];
 }
 
-const PLACEHOLDER = /\{([^{}]+)\}/g;
-
-// Parses the message only if a template needs a field from it
-class LazyJson {
-  private parsed = false;
-  private value: unknown;
-
-  constructor(private readonly raw: string) {}
-
-  public get(path: string): unknown {
-    if (!this.parsed) {
-      this.value = JSON.parse(this.raw);
-      this.parsed = true;
-    }
-
-    return path.split('.').reduce<unknown>(
-      (current, key) => (current !== null && typeof current === 'object' ? (current as Record<string, unknown>)[key] : undefined),
-      this.value
-    );
-  }
-}
-
 export class SseToMqttBridge<TBody extends object = Record<string, unknown>> extends EventEmitter<SseToMqttBridgeEvents> {
   private readonly publisher: MqttPublisher;
   private readonly providers: SseDataProvider<TBody>[];
@@ -80,6 +60,11 @@ export class SseToMqttBridge<TBody extends object = Record<string, unknown>> ext
     const duplicate = names.find((name, index) => names.indexOf(name) !== index);
     if (duplicate) {
       throw new Error(`Duplicate connection name: "${duplicate}"`);
+    }
+
+    for (const connection of options.connections) {
+      if (typeof connection.topic === 'string') validateTopicTemplate(connection.topic);
+      if (Array.isArray(connection.topic)) connection.topic.forEach(validateTopicTemplate);
     }
 
     this.logger = options.logger ?? defaultLogger;
@@ -150,38 +135,11 @@ export class SseToMqttBridge<TBody extends object = Record<string, unknown>> ext
   }
 
   private static resolveTopic<TBody extends object>(connection: SseConnection<TBody>, data: string): TopicSegments | undefined {
-    const topic = connection.topic ?? connection.name;
+    const topic = connection.topic ?? '{name}';
 
     if (typeof topic === 'function') {
       return topic(data, connection.name);
     }
-
-    const templates = Array.isArray(topic) ? topic : [topic];
-    const message = new LazyJson(data);
-    const resolved: string[] = [];
-
-    for (const template of templates) {
-      const segment = SseToMqttBridge.resolveTemplate(template, connection.name, message);
-      if (segment === undefined) return undefined;
-      resolved.push(segment);
-    }
-
-    return resolved;
-  }
-
-  private static resolveTemplate(template: string, connectionName: string, message: LazyJson): string | undefined {
-    let unresolved = false;
-
-    const result = template.replace(PLACEHOLDER, (_match: string, key: string) => {
-      const value = key === 'name' ? connectionName : message.get(key);
-
-      if (value === undefined || value === null || value === '') {
-        unresolved = true;
-        return '';
-      }
-      return String(value);
-    });
-
-    return unresolved ? undefined : result;
+    return resolveTopicTemplates(Array.isArray(topic) ? topic : [topic], connection.name, data);
   }
 }
