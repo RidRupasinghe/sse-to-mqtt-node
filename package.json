@@ -1,6 +1,6 @@
 {
   "name": "sse-to-mqtt",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bridge Server-Sent Events (SSE) streams to MQTT topics, as a library or a config-driven CLI",
   "keywords": [
     "sse",
