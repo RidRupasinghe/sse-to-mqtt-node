@@ -41,3 +41,16 @@ jobs:
             if (!files.includes('dist/index.d.ts') || !files.includes('dist/cli.js')) { console.error('Missing build output'); process.exit(1); }
             console.log(files.join('\n'));
           "
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t sse-to-mqtt-node:ci .
+
+      - name: Image runs as non-root and reports the package version
+        run: |
+          [ "$(docker run --rm --entrypoint id sse-to-mqtt-node:ci -un)" = "node" ]
+          [ "$(docker run --rm sse-to-mqtt-node:ci --version)" = "$(node -p "require('./package.json').version")" ]
