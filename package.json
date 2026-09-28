@@ -39,8 +39,8 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc",
-    "start": "node dist/app.js",
-    "dev": "nodemon --watch src --ext ts --exec ts-node src/app.ts",
+    "start": "node dist/cli.js",
+    "dev": "nodemon --watch src --ext ts --exec ts-node src/cli.ts",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
