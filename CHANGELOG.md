@@ -2,11 +2,11 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.2] - 2026-09-28
 
 ### Added
 
-- Docker image published to `ghcr.io/ridrupasinghe/sse-to-mqtt-node` for `linux/amd64` and `linux/arm64` on each release.
+- Docker images for `linux/amd64` and `linux/arm64`, published on each release to Docker Hub (`ridmarupasinghe/sse-to-mqtt-node`) and GitHub Container Registry (`ghcr.io/ridrupasinghe/sse-to-mqtt-node`).
 
 ### Changed
 

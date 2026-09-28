@@ -169,14 +169,16 @@ Tokens are cached until `expires_in` (minus `expiryMarginMs`, default 30s), conc
 
 ## Docker
 
-Images for `linux/amd64` and `linux/arm64` are published to GitHub Container Registry with every release (from the next release after 0.1.1):
+Images for `linux/amd64` and `linux/arm64` are published with every release from 0.1.2 on, to [Docker Hub](https://hub.docker.com/r/ridmarupasinghe/sse-to-mqtt-node) and GitHub Container Registry (the same image in both):
 
 ```bash
 docker run -d --name sse-to-mqtt-node \
   --env-file .env \
   -v "$PWD/connections.json:/config/connections.json:ro" \
-  ghcr.io/ridrupasinghe/sse-to-mqtt-node:latest
+  ridmarupasinghe/sse-to-mqtt-node:latest
 ```
+
+From GitHub Container Registry instead: `ghcr.io/ridrupasinghe/sse-to-mqtt-node:latest`.
 
 - Mount your connections file at `/config/connections.json` (or set `CONNECTIONS_CONFIG` to another path you mount).
 - Pass the environment variables from the table above with `--env-file` or `-e`. Inside a container, `localhost` is the container itself: use `host.docker.internal` (Docker Desktop) or the broker's hostname.
