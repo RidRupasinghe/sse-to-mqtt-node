@@ -8,7 +8,7 @@
     "name": "orders",
     "method": "POST",
     "url": "/orders/stream",
-    "headers": { "X-Client": "sse-to-mqtt" },
+    "headers": { "X-Client": "sse-to-mqtt-node" },
     "body": { "region": "eu" },
     "topic": "{name}/{orderId}",
     "qos": 1,

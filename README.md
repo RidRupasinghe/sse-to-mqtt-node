@@ -1,4 +1,4 @@
-# sse-to-mqtt
+# sse-to-mqtt-node
 
 Bridge [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html) (SSE) streams to MQTT topics.
 
@@ -15,8 +15,8 @@ Requires Node.js 22 or later.
 ## CLI
 
 ```bash
-npm install -g sse-to-mqtt
-# or run without installing: npx sse-to-mqtt --config connections.json
+npm install -g sse-to-mqtt-node
+# or run without installing: npx sse-to-mqtt-node --config connections.json
 ```
 
 Create `connections.json`:
@@ -41,7 +41,7 @@ Set the environment (a `.env` file in the working directory is loaded automatica
 export STREAMING_ENDPOINT=https://api.example.com
 export MQTT_BROKER_URL=mqtt://localhost:1883
 export MQTT_TOPIC=example
-sse-to-mqtt --config connections.json
+sse-to-mqtt-node --config connections.json
 ```
 
 Events from `/ticker` are published to `example/ticker`; events from `/orders/stream` go to `example/orders/<orderId>`.
@@ -87,11 +87,11 @@ The file is validated at startup; mistakes stop the CLI with a message naming th
 ## Library
 
 ```bash
-npm install sse-to-mqtt
+npm install sse-to-mqtt-node
 ```
 
 ```ts
-import { SseToMqttBridge, createConsoleLogger } from 'sse-to-mqtt';
+import { SseToMqttBridge, createConsoleLogger } from 'sse-to-mqtt-node';
 
 const bridge = new SseToMqttBridge({
   endpoint: 'https://api.example.com',
@@ -152,7 +152,7 @@ Connection `topic` can also be a function `(data, connectionName) => string | st
 ### Authentication
 
 ```ts
-import { BearerTokenProvider, BodyType } from 'sse-to-mqtt';
+import { BearerTokenProvider, BodyType } from 'sse-to-mqtt-node';
 
 const tokenProvider = new BearerTokenProvider({
   url: 'https://auth.example.com/oauth/token',
@@ -172,8 +172,8 @@ Tokens are cached until `expires_in` (minus `expiryMarginMs`, default 30s), conc
 The repository's `Dockerfile` runs the CLI with `CONNECTIONS_CONFIG=config/connections.json`. Mount your own config and pass the environment:
 
 ```bash
-docker build -t sse-to-mqtt .
-docker run --env-file .env -v "$PWD/connections.json:/app/config/connections.json:ro" sse-to-mqtt
+docker build -t sse-to-mqtt-node .
+docker run --env-file .env -v "$PWD/connections.json:/app/config/connections.json:ro" sse-to-mqtt-node
 ```
 
 ## Development

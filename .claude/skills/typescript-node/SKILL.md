@@ -1,9 +1,9 @@
 ---
 name: typescript-node
-description: TypeScript and Node.js patterns for sse-to-mqtt. Use when writing or refactoring any file in src/, adding types, handling async/streams/errors, adding dependencies, or verifying a change compiles and behaves correctly.
+description: TypeScript and Node.js patterns for sse-to-mqtt-node. Use when writing or refactoring any file in src/, adding types, handling async/streams/errors, adding dependencies, or verifying a change compiles and behaves correctly.
 ---
 
-# TypeScript & Node.js in sse-to-mqtt
+# TypeScript & Node.js in sse-to-mqtt-node
 
 ## Before editing
 

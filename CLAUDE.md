@@ -1,6 +1,6 @@
-# sse-to-mqtt
+# sse-to-mqtt-node
 
-A general-purpose bridge that opens one or more Server-Sent Events (SSE) connections and republishes each event to an MQTT broker. It ships as an npm library (`src/index.ts`) and as a config-driven CLI (`src/cli.ts`, the `sse-to-mqtt` bin and the Docker entrypoint). User-facing docs live in `README.md`.
+A general-purpose bridge that opens one or more Server-Sent Events (SSE) connections and republishes each event to an MQTT broker. It ships as an npm library (`src/index.ts`) and as a config-driven CLI (`src/cli.ts`, the `sse-to-mqtt-node` bin and the Docker entrypoint). User-facing docs live in `README.md`.
 
 This repo is **not** tied to any data provider. Provider-specific details (request bodies, topic rules, credentials) belong in config or `.env`, never in `src/`. `config/connections.json` is the maintainer's own deployment config and is not published.
 

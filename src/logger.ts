@@ -11,7 +11,7 @@ export interface Logger {
 const LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
 
 /** Logs to the console, dropping messages below `minLevel`. */
-export function createConsoleLogger(minLevel: LogLevel = 'info', prefix = '[sse-to-mqtt]'): Logger {
+export function createConsoleLogger(minLevel: LogLevel = 'info', prefix = '[sse-to-mqtt-node]'): Logger {
   const enabled = (level: LogLevel): boolean => LEVELS.indexOf(level) >= LEVELS.indexOf(minLevel);
   const log = (level: LogLevel) => (message: string, ...meta: unknown[]): void => {
     if (enabled(level)) console[level](prefix ? `${prefix} ${message}` : message, ...meta);

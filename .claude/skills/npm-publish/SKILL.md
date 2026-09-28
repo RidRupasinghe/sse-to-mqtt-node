@@ -1,15 +1,15 @@
 ---
 name: npm-publish
-description: Prepare, version and publish sse-to-mqtt to the npm registry. Use when the user asks to publish, release, bump the version, check what the package ships, or fix package.json metadata.
+description: Prepare, version and publish sse-to-mqtt-node to the npm registry. Use when the user asks to publish, release, bump the version, check what the package ships, or fix package.json metadata.
 ---
 
-# Publishing sse-to-mqtt to npm
+# Publishing sse-to-mqtt-node to npm
 
 Publishing is public and effectively irreversible (a version number can never be reused, and unpublishing is restricted). **Always get explicit confirmation before `npm publish` and before pushing tags.**
 
 ## 1. Check package.json
 
-- `name` — `sse-to-mqtt` was free on npm when checked; re-check with `npm view <name>` (a 404 means free). Use a scope (`@user/sse-to-mqtt`) if taken.
+- `name` — `sse-to-mqtt-node` was free on npm when checked; re-check with `npm view <name>` (a 404 means free). Use a scope (`@user/sse-to-mqtt-node`) if taken.
 - `version` — follow semver against the public API in `src/index.ts`: breaking export/option changes → major, new features → minor, fixes → patch.
 - Already in place (keep them working): `main`/`types`/`exports` pointing at `dist/`, `bin` → `dist/cli.js`, `files: ["dist", "CHANGELOG.md"]` (README and LICENSE are always included), metadata, `engines.node >=22`, and `prepublishOnly` running typecheck, lint, tests and a clean build.
 - Without `files`, npm falls back to `.gitignore`, which excludes `dist/` and ships a broken package, so never remove it.
@@ -28,13 +28,13 @@ Only `dist/`, `package.json`, `README.md`, `LICENSE` and `CHANGELOG.md` should a
 ## 3. Smoke-test the tarball
 
 ```bash
-npm pack                                   # creates sse-to-mqtt-<version>.tgz
-cd "$SCRATCHPAD" && npm init -y && npm i /path/to/sse-to-mqtt-<version>.tgz
-node -e "const m = require('sse-to-mqtt'); console.log(Object.keys(m))"
-npx sse-to-mqtt --version && npx sse-to-mqtt --help
+npm pack                                   # creates sse-to-mqtt-node-<version>.tgz
+cd "$SCRATCHPAD" && npm init -y && npm i /path/to/sse-to-mqtt-node-<version>.tgz
+node -e "const m = require('sse-to-mqtt-node'); console.log(Object.keys(m))"
+npx sse-to-mqtt-node --version && npx sse-to-mqtt-node --help
 ```
 
-Also check the types resolve from a small `.ts` file importing `SseToMqttBridge`, and that deep imports like `sse-to-mqtt/dist/cli` are blocked by the `exports` map.
+Also check the types resolve from a small `.ts` file importing `SseToMqttBridge`, and that deep imports like `sse-to-mqtt-node/dist/cli` are blocked by the `exports` map.
 
 ## 4. Release (after confirmation)
 
