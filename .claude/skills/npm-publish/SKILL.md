@@ -11,20 +11,19 @@ Publishing is public and effectively irreversible (a version number can never be
 
 - `name` — `sse-to-mqtt` was free on npm when checked; re-check with `npm view <name>` (a 404 means free). Use a scope (`@user/sse-to-mqtt`) if taken.
 - `version` — follow semver against the public API in `src/index.ts`: breaking export/option changes → major, new features → minor, fixes → patch.
-- `main: dist/index.js`, `types: dist/index.d.ts`. Consider an `exports` map.
-- `files: ["dist", "README.md", "LICENSE"]` so only build output ships. Without it, npm falls back to `.gitignore`, and `src/app.ts` and `config/` could be published.
-- `author`, `description`, `repository`, `keywords`, `license` (MIT; add a `LICENSE` file), `engines.node` (Dockerfile uses Node 22).
-- `scripts.prepublishOnly: "npm run build"` so a stale `dist/` is never published.
-- `dependencies` only hold runtime needs of the library. `dotenv` is only used by `src/app.ts`; decide with the user whether the app stays in this package.
+- Already in place (keep them working): `main`/`types`/`exports` pointing at `dist/`, `bin` → `dist/cli.js`, `files: ["dist", "CHANGELOG.md"]` (README and LICENSE are always included), metadata, `engines.node >=22`, and `prepublishOnly` running typecheck, lint, tests and a clean build.
+- Without `files`, npm falls back to `.gitignore`, which excludes `dist/` and ships a broken package, so never remove it.
+- `dependencies` only hold runtime needs: `mqtt` (library) and `dotenv` (CLI).
+- Move the `CHANGELOG.md` "Unreleased" section to the new version and date.
 
 ## 2. Build clean and inspect
 
 ```bash
-rm -rf dist && npm run build
-npm pack --dry-run          # lists exactly what would ship; check for .env, config, src
+npm run build               # cleans dist/ first
+npm pack --dry-run          # lists exactly what would ship
 ```
 
-Nothing secret or deployment-specific should appear. `dist/` can contain leftovers from renamed files, which is why you rebuild from clean.
+Only `dist/`, `package.json`, `README.md`, `LICENSE` and `CHANGELOG.md` should appear. No `src/`, `config/`, `.env`, `.claude/` or tests. CI runs the same check.
 
 ## 3. Smoke-test the tarball
 
@@ -32,9 +31,10 @@ Nothing secret or deployment-specific should appear. `dist/` can contain leftove
 npm pack                                   # creates sse-to-mqtt-<version>.tgz
 cd "$SCRATCHPAD" && npm init -y && npm i /path/to/sse-to-mqtt-<version>.tgz
 node -e "const m = require('sse-to-mqtt'); console.log(Object.keys(m))"
+npx sse-to-mqtt --version && npx sse-to-mqtt --help
 ```
 
-Also check the types resolve from a small `.ts` file importing `SseToMqttBridge`.
+Also check the types resolve from a small `.ts` file importing `SseToMqttBridge`, and that deep imports like `sse-to-mqtt/dist/cli` are blocked by the `exports` map.
 
 ## 4. Release (after confirmation)
 
