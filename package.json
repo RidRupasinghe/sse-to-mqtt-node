@@ -46,7 +46,8 @@
     "dev": "nodemon --watch src --ext ts --exec ts-node src/cli.ts",
     "test": "vitest run",
     "lint": "eslint .",
-    "prepublishOnly": "npm run build"
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "dependencies": {
     "dotenv": "^16.5.0",
