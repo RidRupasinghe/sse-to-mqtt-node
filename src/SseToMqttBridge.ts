@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { MqttPublisher, MqttPublisherOptions } from './MqttPublisher';
+import { MqttPayload, MqttPublisher, MqttPublisherOptions, QoS } from './MqttPublisher';
 import { RetryOptions, SseDataProvider, SseRequest, TokenProvider } from './SseDataProvider';
 import { SseEvent } from './SseParser';
 import { describeError } from './errors';
@@ -11,9 +11,20 @@ export type TopicSegments = string | string[];
 // Returns the topic (relative to the MQTT base topic) for a message, or undefined to skip it
 export type TopicResolver = (data: string, connectionName: string) => TopicSegments | undefined;
 
+/** Returns the payload to publish for an event, or undefined to skip it. */
+export type PayloadTransform = (data: string, event: SseEvent) => MqttPayload | undefined;
+
 export type SseConnection<TBody extends object = Record<string, unknown>> = SseRequest<TBody> & {
   name: string;
+  /** Absolute URL, or a path resolved against the bridge endpoint. Defaults to the endpoint. */
+  url?: string;
   headers?: Record<string, string>;
+  /** Overrides the publisher's default QoS for this connection. */
+  qos?: QoS;
+  /** Overrides the publisher's default retain flag for this connection. */
+  retain?: boolean;
+  /** Reshapes or filters each message before publishing; the topic is still resolved from the raw data. */
+  transform?: PayloadTransform;
   // Defaults to "{name}". String topics may contain placeholders:
   // {name} for the connection name, or {field.path} for a field of the JSON message.
   // Messages where a placeholder cannot be resolved are skipped. Placeholder values
@@ -39,7 +50,7 @@ export interface SseToMqttBridgeEvents {
   reconnecting: [connection: string, delayMs: number, attempt: number];
   gaveUp: [connection: string];
   message: [connection: string, event: SseEvent];
-  published: [connection: string, topic: string, payload: string];
+  published: [connection: string, topic: string, payload: MqttPayload];
   /** Only emitted when there is at least one listener, so it never crashes the process. */
   error: [error: Error, connection: string];
 }
@@ -89,7 +100,7 @@ export class SseToMqttBridge<TBody extends object = Record<string, unknown>> ext
     return new SseDataProvider<TBody>({
       ...request,
       name: connection.name,
-      url: options.endpoint,
+      url: new URL(connection.url ?? '', options.endpoint).toString(),
       headers: { ...options.headers, ...connection.headers },
       tokenProvider: options.tokenProvider,
       retry: options.retry,
@@ -103,27 +114,31 @@ export class SseToMqttBridge<TBody extends object = Record<string, unknown>> ext
       },
       onMessage: (data: string, event: SseEvent) => {
         this.emit('message', connection.name, event);
-        this.handleMessage(connection, data);
+        this.handleMessage(connection, data, event);
       }
     });
   }
 
-  private handleMessage(connection: SseConnection<TBody>, data: string): void {
+  private handleMessage(connection: SseConnection<TBody>, data: string, event: SseEvent): void {
     let topic: TopicSegments | undefined;
+    let payload: MqttPayload | undefined;
 
     try {
       topic = SseToMqttBridge.resolveTopic(connection, data);
+      if (!topic || topic.length === 0) return;
+      payload = connection.transform ? connection.transform(data, event) : data;
     } catch (error: unknown) {
-      this.logger.error(`Failed to resolve topic for "${connection.name}": ${describeError(error)}`);
+      this.logger.error(`Failed to process message for "${connection.name}": ${describeError(error)}`);
       this.emitError(error instanceof Error ? error : new Error(String(error)), connection.name);
       return;
     }
 
-    if (!topic || topic.length === 0) return;
+    if (payload === undefined) return;
 
+    const published = payload;
     const relativeTopic = Array.isArray(topic) ? topic.join('/') : topic;
-    this.publisher.publish(topic, data).then(
-      () => this.emit('published', connection.name, relativeTopic, data),
+    this.publisher.publish(topic, published, { qos: connection.qos, retain: connection.retain }).then(
+      () => this.emit('published', connection.name, relativeTopic, published),
       (error: Error) => this.emitError(error, connection.name) // already logged by MqttPublisher
     );
   }

@@ -8,6 +8,8 @@ interface MqttPublisherCommonOptions {
   baseTopic: string;
   /** Default 0. */
   qos?: QoS;
+  /** Default false. */
+  retain?: boolean;
   logger?: Logger;
 }
 
@@ -31,10 +33,17 @@ export type MqttPublisherOptions = MqttPublisherCommonOptions & (
 
 export type MqttPayload = string | Buffer | object;
 
+/** Per-message overrides of the publisher defaults. */
+export interface PublishOptions {
+  qos?: QoS;
+  retain?: boolean;
+}
+
 export class MqttPublisher {
   private readonly client: MqttClient;
   private readonly baseTopic: string;
   private readonly qos: QoS;
+  private readonly retain: boolean;
   private readonly logger: Logger;
   private readonly ownsClient: boolean;
 
@@ -48,6 +57,7 @@ export class MqttPublisher {
 
     this.baseTopic = options.baseTopic;
     this.qos = options.qos ?? 0;
+    this.retain = options.retain ?? false;
     this.logger = options.logger ?? defaultLogger;
 
     this.ownsClient = !options.client;
@@ -61,12 +71,13 @@ export class MqttPublisher {
   }
 
   // Messages published while disconnected are queued by mqtt.js and sent on reconnect
-  public publish(topicSegments: string | string[], payload: MqttPayload): Promise<void> {
+  public publish(topicSegments: string | string[], payload: MqttPayload, options: PublishOptions = {}): Promise<void> {
     const topic = this.buildTopic(topicSegments);
     const message = MqttPublisher.serializePayload(payload);
 
     return new Promise((resolve, reject) => {
-      this.client.publish(topic, message, { qos: this.qos }, (error?: Error) => {
+      const publishOptions = { qos: options.qos ?? this.qos, retain: options.retain ?? this.retain };
+      this.client.publish(topic, message, publishOptions, (error?: Error) => {
         if (error) {
           this.logger.error(`MQTT publish to ${topic} failed: ${error.message}`);
           reject(error);

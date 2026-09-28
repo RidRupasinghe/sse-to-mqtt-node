@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { SseConnection } from './SseToMqttBridge';
+import { QoS } from './MqttPublisher';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -16,7 +17,7 @@ function validateConnection(value: unknown, index: number): SseConnection {
     throw new Error(`${where} must be an object`);
   }
 
-  const { name, method, body, headers, topic } = value;
+  const { name, method, url, body, headers, topic, qos, retain } = value;
 
   if (typeof name !== 'string' || !name) {
     throw new Error(`${where} requires a "name"`);
@@ -36,9 +37,21 @@ function validateConnection(value: unknown, index: number): SseConnection {
   if (topic !== undefined && typeof topic !== 'string' && !isStringArray(topic)) {
     throw new Error(`"${name}": "topic" must be a string or an array of strings`);
   }
+  if (url !== undefined && (typeof url !== 'string' || !url)) {
+    throw new Error(`"${name}": "url" must be a non-empty string`);
+  }
+  if (qos !== undefined && qos !== 0 && qos !== 1 && qos !== 2) {
+    throw new Error(`"${name}": "qos" must be 0, 1 or 2`);
+  }
+  if (retain !== undefined && typeof retain !== 'boolean') {
+    throw new Error(`"${name}": "retain" must be true or false`);
+  }
 
   const common = {
     name,
+    url: url as string | undefined,
+    qos: qos as QoS | undefined,
+    retain: retain as boolean | undefined,
     headers: headers as Record<string, string> | undefined,
     topic: topic as string | string[] | undefined
   };
