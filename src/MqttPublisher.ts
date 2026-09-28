@@ -3,15 +3,31 @@ import { Logger, defaultLogger } from './logger';
 
 export type QoS = 0 | 1 | 2;
 
-export interface MqttPublisherOptions {
-  brokerUrl: string;
+interface MqttPublisherCommonOptions {
+  /** Prefix for every published topic. */
   baseTopic: string;
-  username?: string;
-  password?: string;
+  /** Default 0. */
   qos?: QoS;
-  clientOptions?: IClientOptions;
   logger?: Logger;
 }
+
+/** Connect to a broker, or pass an existing `client` (which is then left open on disconnect). */
+export type MqttPublisherOptions = MqttPublisherCommonOptions & (
+  | {
+    brokerUrl: string;
+    username?: string;
+    password?: string;
+    clientOptions?: IClientOptions;
+    client?: never;
+  }
+  | {
+    client: MqttClient;
+    brokerUrl?: never;
+    username?: never;
+    password?: never;
+    clientOptions?: never;
+  }
+);
 
 export type MqttPayload = string | Buffer | object;
 
@@ -20,17 +36,22 @@ export class MqttPublisher {
   private readonly baseTopic: string;
   private readonly qos: QoS;
   private readonly logger: Logger;
+  private readonly ownsClient: boolean;
 
   constructor(options: MqttPublisherOptions) {
-    if (!options.brokerUrl || !options.baseTopic) {
-      throw new Error('MqttPublisher requires a brokerUrl and baseTopic');
+    if (!options.baseTopic) {
+      throw new Error('MqttPublisher requires a baseTopic');
+    }
+    if (!options.client && !options.brokerUrl) {
+      throw new Error('MqttPublisher requires a brokerUrl or a client');
     }
 
     this.baseTopic = options.baseTopic;
     this.qos = options.qos ?? 0;
     this.logger = options.logger ?? defaultLogger;
 
-    this.client = mqtt.connect(options.brokerUrl, {
+    this.ownsClient = !options.client;
+    this.client = options.client ?? mqtt.connect(options.brokerUrl, {
       ...options.clientOptions,
       username: options.username,
       password: options.password
@@ -58,8 +79,16 @@ export class MqttPublisher {
     });
   }
 
+  /** Ends the connection if this publisher created it; a client passed in is left open. */
   public async disconnect(): Promise<void> {
-    await this.client.endAsync();
+    this.client.removeListener('connect', this.onConnect);
+    this.client.removeListener('error', this.onError);
+    this.client.removeListener('close', this.onClose);
+    this.client.removeListener('reconnect', this.onReconnect);
+
+    if (this.ownsClient) {
+      await this.client.endAsync();
+    }
   }
 
   private buildTopic(topicSegments: string | string[]): string {
@@ -74,21 +103,15 @@ export class MqttPublisher {
     return JSON.stringify(payload);
   }
 
+  private readonly onConnect = (): void => this.logger.info('MQTT connected');
+  private readonly onError = (error: Error): void => this.logger.error(`MQTT connection error: ${error.message}`);
+  private readonly onClose = (): void => this.logger.warn('MQTT disconnected');
+  private readonly onReconnect = (): void => this.logger.info('MQTT reconnecting');
+
   private registerEventHandlers(): void {
-    this.client.on('connect', () => {
-      this.logger.info('MQTT connected');
-    });
-
-    this.client.on('error', (error: Error) => {
-      this.logger.error(`MQTT connection error: ${error.message}`);
-    });
-
-    this.client.on('close', () => {
-      this.logger.warn('MQTT disconnected');
-    });
-
-    this.client.on('reconnect', () => {
-      this.logger.info('MQTT reconnecting');
-    });
+    this.client.on('connect', this.onConnect);
+    this.client.on('error', this.onError);
+    this.client.on('close', this.onClose);
+    this.client.on('reconnect', this.onReconnect);
   }
 }
