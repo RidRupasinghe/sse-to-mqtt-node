@@ -11,8 +11,14 @@ export interface TokenProvider {
 }
 
 export interface RetryOptions {
+  /** Delay before the first retry; doubles on each consecutive failure. Default 2000. */
   initialDelayMs: number;
+  /** Upper bound for the delay. Default 30000. */
   maxDelayMs: number;
+  /** Consecutive failed attempts before giving up. Default Infinity. */
+  maxRetries: number;
+  /** Randomises each delay by up to this fraction (0-1) to avoid reconnect storms. Default 0.2. */
+  jitter: number;
 }
 
 export type SseRequest<TBody extends object> =
@@ -33,7 +39,9 @@ export type SseDataProviderOptions<TBody extends object> = SseRequest<TBody> & {
 
 const DEFAULT_RETRY: RetryOptions = {
   initialDelayMs: 2000,
-  maxDelayMs: 30000
+  maxDelayMs: 30000,
+  maxRetries: Number.POSITIVE_INFINITY,
+  jitter: 0.2
 };
 
 export class SseDataProvider<TBody extends object = Record<string, unknown>> {
@@ -169,8 +177,16 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
   }
 
   private scheduleReconnect(): void {
+    if (this.retryCount >= this.retry.maxRetries) {
+      console.error(`❌ Giving up on "${this.name}" after ${this.retryCount} retries`);
+      this.stop();
+      return;
+    }
+
     const initialDelayMs = this.parser.retryMs ?? this.retry.initialDelayMs;
-    const delay = Math.min(this.retry.maxDelayMs, initialDelayMs * Math.pow(2, this.retryCount));
+    const backoff = Math.min(this.retry.maxDelayMs, initialDelayMs * Math.pow(2, this.retryCount));
+    const jitter = Math.min(Math.max(this.retry.jitter, 0), 1);
+    const delay = Math.round(backoff * (1 - jitter * Math.random()));
     this.retryCount++;
 
     console.log(`🔁 Retrying "${this.name}" in ${delay / 1000}s...`);
