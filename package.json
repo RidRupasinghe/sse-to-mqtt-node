@@ -22,7 +22,7 @@
   },
   "homepage": "https://github.com/RidRupasinghe/sse-to-mqtt-node#readme",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
