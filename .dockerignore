@@ -1,6 +1,7 @@
-/node_modules
-/dist/*
-.idea
-.env
-*.log
-mosquitto/
+# Allow-list: only what the image build needs is sent to Docker
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!src/
+*.DS_Store
