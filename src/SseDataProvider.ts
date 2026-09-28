@@ -2,6 +2,7 @@ import readline from 'readline';
 import { Readable } from 'stream';
 import { ReadableStream as WebReadableStream } from 'stream/web';
 import { HttpError, describeError } from './errors';
+import { Logger, defaultLogger } from './logger';
 import { SseEvent, SseParser } from './SseParser';
 
 export interface TokenProvider {
@@ -33,6 +34,7 @@ export type SseDataProviderOptions<TBody extends object> = SseRequest<TBody> & {
   headers?: Record<string, string>;
   tokenProvider?: TokenProvider;
   retry?: Partial<RetryOptions>;
+  logger?: Logger;
   /** Called for every dispatched event with its data and the full parsed event. */
   onMessage: (data: string, event: SseEvent) => void;
 };
@@ -54,6 +56,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
   private readonly retry: RetryOptions;
   private readonly onMessage: (data: string, event: SseEvent) => void;
   private readonly parser: SseParser;
+  private readonly logger: Logger;
 
   private retryCount = 0;
   private retryTimer?: NodeJS.Timeout;
@@ -73,6 +76,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     this.tokenProvider = options.tokenProvider;
     this.retry = { ...DEFAULT_RETRY, ...options.retry };
     this.onMessage = options.onMessage;
+    this.logger = options.logger ?? defaultLogger;
     this.parser = new SseParser((event: SseEvent) => this.onMessage(event.data, event));
   }
 
@@ -111,13 +115,13 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
         throw new Error('Response has no body');
       }
 
-      console.log(`📡 Connected to SSE for "${this.name}"`);
+      this.logger.info(`SSE connected: "${this.name}"`);
       this.retryCount = 0;
 
       this.consumeStream(Readable.fromWeb(response.body as WebReadableStream<Uint8Array>));
     } catch (error: unknown) {
       if (this.stopped) return;
-      console.error(`❌ SSE connection failed for "${this.name}":`, describeError(error));
+      this.logger.error(`SSE connection failed for "${this.name}": ${describeError(error)}`);
       this.scheduleReconnect();
     }
   }
@@ -133,7 +137,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
 
     rl.on('close', () => {
       if (this.stopped) return;
-      console.warn(`🔌 SSE stream closed for "${this.name}". Reconnecting...`);
+      this.logger.warn(`SSE stream closed for "${this.name}"`);
       this.scheduleReconnect();
     });
 
@@ -142,14 +146,14 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
 
     stream.on('error', (error: Error) => {
       if (!this.stopped) {
-        console.error(`❌ SSE stream error for "${this.name}":`, error.message);
+        this.logger.error(`SSE stream error for "${this.name}": ${error.message}`);
       }
       rl.close();
     });
 
     stream.on('end', () => {
       if (!this.stopped) {
-        console.warn(`📴 Stream ended for "${this.name}".`);
+        this.logger.debug(`SSE stream ended for "${this.name}"`);
       }
       rl.close();
     });
@@ -178,7 +182,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
 
   private scheduleReconnect(): void {
     if (this.retryCount >= this.retry.maxRetries) {
-      console.error(`❌ Giving up on "${this.name}" after ${this.retryCount} retries`);
+      this.logger.error(`Giving up on "${this.name}" after ${this.retryCount} retries`);
       this.stop();
       return;
     }
@@ -189,7 +193,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     const delay = Math.round(backoff * (1 - jitter * Math.random()));
     this.retryCount++;
 
-    console.log(`🔁 Retrying "${this.name}" in ${delay / 1000}s...`);
+    this.logger.info(`Reconnecting "${this.name}" in ${delay}ms`);
     this.retryTimer = setTimeout(() => void this.connect(), delay);
   }
 }

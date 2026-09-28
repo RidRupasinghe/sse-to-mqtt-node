@@ -16,3 +16,6 @@ export type { BearerTokenProviderOptions } from './BearerTokenProvider';
 export { loadConnectionsConfig } from './connectionsConfig';
 
 export { HttpError, describeError } from './errors';
+
+export { createConsoleLogger, silentLogger } from './logger';
+export type { LogLevel, Logger } from './logger';
