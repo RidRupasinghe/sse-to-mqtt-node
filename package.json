@@ -1,21 +1,55 @@
 {
   "name": "sse-to-mqtt",
   "version": "1.0.0",
-  "description": "A Node.js app that listens to SSE and publishes to MQTT",
-  "main": "index.js",
+  "description": "Bridge Server-Sent Events streams to MQTT topics",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "sse-to-mqtt": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts"
+    "prepublishOnly": "npm run build",
+    "start": "node dist/cli.js --config examples/barentswatch.config.json",
+    "dev": "nodemon --watch src --ext ts --exec ts-node src/cli.ts -- --config examples/barentswatch.config.json"
+  },
+  "keywords": [
+    "sse",
+    "server-sent-events",
+    "mqtt",
+    "bridge",
+    "streaming"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RidRupasinghe/sse-to-mqtt.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RidRupasinghe/sse-to-mqtt/issues"
+  },
+  "homepage": "https://github.com/RidRupasinghe/sse-to-mqtt#readme",
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "axios": "^1.10.0",
     "dotenv": "^16.5.0",
-    "eventsource": "^2.0.2",
     "mqtt": "^5.0.1",
     "qs": "^6.14.0"
   },
-  "author": "Your Name",
+  "author": "Rid Rupasinghe <ridrupasinghe@gmail.com>",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^24.0.3",

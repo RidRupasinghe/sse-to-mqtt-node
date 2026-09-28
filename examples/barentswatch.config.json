@@ -1,0 +1,65 @@
+{
+  "mqtt": {
+    "brokerUrl": "${MQTT_BROKER_URL}",
+    "username": "${MQTT_USERNAME}",
+    "password": "${MQTT_PASSWORD}"
+  },
+  "topic": "${MQTT_TOPIC}",
+  "topicKey": "imoNumber",
+  "streams": [
+    {
+      "name": "Flakk-Rørvik",
+      "url": "${STREAMING_ENDPOINT}",
+      "method": "POST",
+      "auth": {
+        "type": "oauth2-client-credentials",
+        "tokenUrl": "${AUTHENTICATION_URL}",
+        "clientId": "${CLIENT_ID}",
+        "clientSecret": "${CLIENT_SECRET}",
+        "scope": "${CLIENT_SCOPE}"
+      },
+      "body": {
+        "modelType": "Full",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[
+            [10.101017, 63.496667],
+            [10.170916, 63.438322],
+            [10.268686, 63.452632],
+            [10.170771, 63.528501],
+            [10.101017, 63.496667]
+          ]]
+        },
+        "modelFormat": "Json",
+        "downsample": false
+      }
+    },
+    {
+      "name": "Moss-Horten",
+      "url": "${STREAMING_ENDPOINT}",
+      "method": "POST",
+      "auth": {
+        "type": "oauth2-client-credentials",
+        "tokenUrl": "${AUTHENTICATION_URL}",
+        "clientId": "${CLIENT_ID}",
+        "clientSecret": "${CLIENT_SECRET}",
+        "scope": "${CLIENT_SCOPE}"
+      },
+      "body": {
+        "modelType": "Full",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[
+            [10.668885, 59.449236],
+            [10.496159, 59.427641],
+            [10.478561, 59.398982],
+            [10.649021, 59.394696],
+            [10.668885, 59.449236]
+          ]]
+        },
+        "modelFormat": "Json",
+        "downsample": false
+      }
+    }
+  ]
+}
