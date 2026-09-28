@@ -45,6 +45,7 @@
     "start": "node dist/cli.js",
     "dev": "nodemon --watch src --ext ts --exec ts-node src/cli.ts",
     "test": "vitest run",
+    "lint": "eslint .",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -52,10 +53,13 @@
     "mqtt": "^5.0.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^24.0.3",
+    "eslint": "^10.11.0",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3",
+    "typescript-eslint": "^8.70.1",
     "vitest": "^5.0.2"
   }
 }
