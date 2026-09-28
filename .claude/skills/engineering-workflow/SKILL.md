@@ -1,6 +1,6 @@
 ---
 name: engineering-workflow
-description: General software engineering workflow for sse-to-mqtt — scoping a change, refactoring safely, keeping the repo provider-agnostic, git hygiene, and reporting results. Use for any non-trivial change, refactor, bug fix or code review in this repo.
+description: General software engineering workflow for sse-to-mqtt-node — scoping a change, refactoring safely, keeping the repo provider-agnostic, git hygiene, and reporting results. Use for any non-trivial change, refactor, bug fix or code review in this repo.
 ---
 
 # Engineering workflow
