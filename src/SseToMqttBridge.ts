@@ -39,6 +39,8 @@ export interface SseToMqttBridgeOptions<TBody extends object = Record<string, un
   tokenProvider?: TokenProvider;
   headers?: Record<string, string>;
   retry?: Partial<RetryOptions>;
+  /** Fail a connection attempt if no response headers arrive within this time. Default 30000. */
+  connectTimeoutMs?: number;
   /** Used by the bridge and passed to every component unless they set their own. Silent by default. */
   logger?: Logger;
 }
@@ -104,6 +106,7 @@ export class SseToMqttBridge<TBody extends object = Record<string, unknown>> ext
       headers: { ...options.headers, ...connection.headers },
       tokenProvider: options.tokenProvider,
       retry: options.retry,
+      connectTimeoutMs: options.connectTimeoutMs,
       logger: this.logger,
       hooks: {
         onConnected: () => this.emit('connected', connection.name),
