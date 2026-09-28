@@ -10,4 +10,6 @@ COPY . .
 
 RUN npm run build
 
+ENV CONNECTIONS_CONFIG=config/connections.json
+
 CMD ["npm", "start"]
