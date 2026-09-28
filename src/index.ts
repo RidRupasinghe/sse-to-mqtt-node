@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import axios from 'axios';
 import readline from 'readline';
-import { MQTTPublisher } from './mqttPublisher';
+import { MqttPublisher } from './MqttPublisher';
 import { BearerTokenProvider, BodyType } from './BearerTokenProvider';
 import coordinateSets from './ferry_connection'
 
@@ -14,12 +14,28 @@ interface ClientCredentialsBody {
   grant_type: 'client_credentials';
 }
 
+interface VesselEvent {
+  imoNumber?: number | string;
+}
+
 export class SSE_TO_MQTT_BRIDGE {
-  private publisher: MQTTPublisher;
+  private publisher: MqttPublisher;
   private tokenProvider: BearerTokenProvider<ClientCredentialsBody>;
 
   constructor() {
-    this.publisher = new MQTTPublisher();
+    const { MQTT_BROKER_URL, MQTT_TOPIC, MQTT_USERNAME, MQTT_PASSWORD } = process.env;
+
+    if (!MQTT_BROKER_URL || !MQTT_TOPIC) {
+      throw new Error('Missing MQTT configuration in .env');
+    }
+
+    this.publisher = new MqttPublisher({
+      brokerUrl: MQTT_BROKER_URL,
+      baseTopic: MQTT_TOPIC,
+      username: MQTT_USERNAME,
+      password: MQTT_PASSWORD
+    });
+
     const { AUTHENTICATION_URL, CLIENT_ID, CLIENT_SECRET, CLIENT_SCOPE } = process.env;
 
     if (!AUTHENTICATION_URL || !CLIENT_ID || !CLIENT_SECRET || !CLIENT_SCOPE) {
@@ -82,7 +98,7 @@ export class SSE_TO_MQTT_BRIDGE {
       rl.on('line', (line: string) => {
         if (line.startsWith('data:')) {
           const eventData = line.replace(/^data:\s*/, '');
-          this.publisher.publish(eventData, name);
+          this.publishVesselEvent(name, eventData);
         }
       });
 
@@ -109,6 +125,22 @@ export class SSE_TO_MQTT_BRIDGE {
       console.error(`❌ SSE connection failed for "${name}":`, err.message);
       this.retryWithBackoffCoordinates(name, coordinates, retryCount);
     }
+  }
+
+  private publishVesselEvent(name: string, eventData: string): void {
+    let event: VesselEvent;
+    try {
+      event = JSON.parse(eventData) as VesselEvent;
+    } catch (error: unknown) {
+      console.error(`❌ Failed to parse event for "${name}":`, error instanceof Error ? error.message : String(error));
+      return;
+    }
+
+    if (!event?.imoNumber) return;
+
+    this.publisher.publish([name, String(event.imoNumber)], eventData).catch(() => {
+      // already logged by MqttPublisher
+    });
   }
 
   private retryWithBackoffCoordinates(name: string, coordinates: number[][], retryCount: number) {
