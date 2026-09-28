@@ -28,5 +28,5 @@ export const silentLogger: Logger = {
   error: () => undefined
 };
 
-/** Logger used when none is passed in options. */
-export const defaultLogger: Logger = createConsoleLogger('debug', '');
+/** Logger used when none is passed in options: libraries stay silent unless asked. */
+export const defaultLogger: Logger = silentLogger;

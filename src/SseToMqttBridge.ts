@@ -1,5 +1,7 @@
 import { MqttPublisher, MqttPublisherOptions } from './MqttPublisher';
 import { RetryOptions, SseDataProvider, SseRequest, TokenProvider } from './SseDataProvider';
+import { describeError } from './errors';
+import { Logger, defaultLogger } from './logger';
 
 export type TopicSegments = string | string[];
 
@@ -22,6 +24,8 @@ export interface SseToMqttBridgeOptions<TBody extends object = Record<string, un
   tokenProvider?: TokenProvider;
   headers?: Record<string, string>;
   retry?: Partial<RetryOptions>;
+  /** Used by the bridge and passed to every component unless they set their own. Silent by default. */
+  logger?: Logger;
 }
 
 const PLACEHOLDER = /\{([^{}]+)\}/g;
@@ -49,6 +53,7 @@ class LazyJson {
 export class SseToMqttBridge<TBody extends object = Record<string, unknown>> {
   private readonly publisher: MqttPublisher;
   private readonly providers: SseDataProvider<TBody>[];
+  private readonly logger: Logger;
 
   constructor(options: SseToMqttBridgeOptions<TBody>) {
     if (!options.endpoint) {
@@ -61,7 +66,8 @@ export class SseToMqttBridge<TBody extends object = Record<string, unknown>> {
       throw new Error(`Duplicate connection name: "${duplicate}"`);
     }
 
-    this.publisher = new MqttPublisher(options.mqtt);
+    this.logger = options.logger ?? defaultLogger;
+    this.publisher = new MqttPublisher({ logger: this.logger, ...options.mqtt });
     this.providers = options.connections.map((connection) => this.createProvider(options, connection));
   }
 
@@ -86,6 +92,7 @@ export class SseToMqttBridge<TBody extends object = Record<string, unknown>> {
       headers: { ...options.headers, ...connection.headers },
       tokenProvider: options.tokenProvider,
       retry: options.retry,
+      logger: this.logger,
       onMessage: (data: string) => this.handleMessage(connection, data)
     });
   }
@@ -96,7 +103,7 @@ export class SseToMqttBridge<TBody extends object = Record<string, unknown>> {
     try {
       topic = SseToMqttBridge.resolveTopic(connection, data);
     } catch (error: unknown) {
-      console.error(`❌ Failed to resolve topic for "${connection.name}":`, error instanceof Error ? error.message : String(error));
+      this.logger.error(`Failed to resolve topic for "${connection.name}": ${describeError(error)}`);
       return;
     }
 
