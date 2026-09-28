@@ -14,6 +14,15 @@ export interface BearerTokenProviderOptions<TBody extends object> {
   headers?: Record<string, string>;
   // Response fields checked in order for the token
   tokenFields?: string[];
+  /** Reuse the token until it expires (from `expires_in`) or is invalidated. Default true. */
+  cache?: boolean;
+  /** Refresh this long before `expires_in` runs out. Default 30000. */
+  expiryMarginMs?: number;
+}
+
+interface CachedToken {
+  token: string;
+  expiresAt: number;
 }
 
 export class BearerTokenProvider<TBody extends object = Record<string, unknown>> {
@@ -22,6 +31,11 @@ export class BearerTokenProvider<TBody extends object = Record<string, unknown>>
   private readonly bodyType: BodyType;
   private readonly headers: Record<string, string>;
   private readonly tokenFields: string[];
+  private readonly cache: boolean;
+  private readonly expiryMarginMs: number;
+
+  private cached?: CachedToken;
+  private pending?: Promise<string>;
 
   constructor(options: BearerTokenProviderOptions<TBody>) {
     if (!options.url) {
@@ -33,9 +47,30 @@ export class BearerTokenProvider<TBody extends object = Record<string, unknown>>
     this.bodyType = options.bodyType;
     this.headers = options.headers ?? {};
     this.tokenFields = options.tokenFields ?? ['access_token', 'token'];
+    this.cache = options.cache ?? true;
+    this.expiryMarginMs = options.expiryMarginMs ?? 30000;
   }
 
-  public async getBearerToken(): Promise<string> {
+  /** Returns a cached token when still valid; concurrent callers share one request. */
+  public getBearerToken(): Promise<string> {
+    if (this.cache && this.cached && Date.now() < this.cached.expiresAt) {
+      return Promise.resolve(this.cached.token);
+    }
+
+    if (!this.pending) {
+      this.pending = this.fetchToken().finally(() => {
+        this.pending = undefined;
+      });
+    }
+    return this.pending;
+  }
+
+  /** Drops the cached token, e.g. after the server rejected it with 401. */
+  public invalidate(): void {
+    this.cached = undefined;
+  }
+
+  private async fetchToken(): Promise<string> {
     try {
       const response = await fetch(this.url, {
         method: 'POST',
@@ -56,6 +91,10 @@ export class BearerTokenProvider<TBody extends object = Record<string, unknown>>
 
       if (!token) {
         throw new Error(`Token response did not contain any of: ${this.tokenFields.join(', ')}`);
+      }
+
+      if (this.cache) {
+        this.cached = { token, expiresAt: this.computeExpiry(data) };
       }
 
       console.log('✅ Bearer token retrieved');
@@ -88,6 +127,16 @@ export class BearerTokenProvider<TBody extends object = Record<string, unknown>>
     }
 
     return params.toString();
+  }
+
+  private computeExpiry(data: unknown): number {
+    const expiresIn = (data as TokenResponse)['expires_in'];
+    const seconds = typeof expiresIn === 'string' ? Number(expiresIn) : expiresIn;
+
+    if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) {
+      return Number.POSITIVE_INFINITY;
+    }
+    return Date.now() + Math.max(0, seconds * 1000 - this.expiryMarginMs);
   }
 
   private extractToken(data: unknown): string | undefined {

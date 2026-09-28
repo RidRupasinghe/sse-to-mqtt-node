@@ -6,6 +6,8 @@ import { SseEvent, SseParser } from './SseParser';
 
 export interface TokenProvider {
   getBearerToken(): Promise<string>;
+  /** Called when the server rejects the token (HTTP 401) so the next call fetches a fresh one. */
+  invalidate?(): void;
 }
 
 export interface RetryOptions {
@@ -92,6 +94,9 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
 
       if (!response.ok) {
         await response.body?.cancel();
+        if (response.status === 401) {
+          this.tokenProvider?.invalidate?.();
+        }
         throw new HttpError(response.status, response.statusText, this.url);
       }
       if (!response.body) {
