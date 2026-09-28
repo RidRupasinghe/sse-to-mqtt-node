@@ -1,4 +1,4 @@
-import axios, { AxiosError, Method } from 'axios';
+import axios, { AxiosError } from 'axios';
 import readline from 'readline';
 import { Readable } from 'stream';
 
@@ -11,16 +11,20 @@ export interface RetryOptions {
   maxDelayMs: number;
 }
 
-export interface SseDataProviderOptions<TBody extends object> {
+export type SseRequest<TBody extends object> =
+  | { method: 'GET'; body?: never }
+  | { method: 'POST'; body?: TBody };
+
+export type HttpMethod = SseRequest<object>['method'];
+
+export type SseDataProviderOptions<TBody extends object> = SseRequest<TBody> & {
   name: string;
   url: string;
-  method?: Method;
-  body?: TBody;
   headers?: Record<string, string>;
   tokenProvider?: TokenProvider;
   retry?: Partial<RetryOptions>;
   onMessage: (data: string) => void;
-}
+};
 
 const DEFAULT_RETRY: RetryOptions = {
   initialDelayMs: 2000,
@@ -30,7 +34,7 @@ const DEFAULT_RETRY: RetryOptions = {
 export class SseDataProvider<TBody extends object = Record<string, unknown>> {
   private readonly name: string;
   private readonly url: string;
-  private readonly method: Method;
+  private readonly method: HttpMethod;
   private readonly body?: TBody;
   private readonly headers: Record<string, string>;
   private readonly tokenProvider?: TokenProvider;
@@ -49,7 +53,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
 
     this.name = options.name;
     this.url = options.url;
-    this.method = options.method ?? (options.body ? 'POST' : 'GET');
+    this.method = options.method;
     this.body = options.body;
     this.headers = options.headers ?? {};
     this.tokenProvider = options.tokenProvider;

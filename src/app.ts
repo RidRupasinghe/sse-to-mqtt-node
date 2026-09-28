@@ -1,120 +1,56 @@
 import dotenv from 'dotenv';
-import { MqttPublisher } from './MqttPublisher';
 import { BearerTokenProvider, BodyType } from './BearerTokenProvider';
-import { SseDataProvider } from './SseDataProvider';
-import coordinateSets from './ferry_connection'
+import { SseToMqttBridge } from './SseToMqttBridge';
+import { TokenProvider } from './SseDataProvider';
+import { loadConnectionsConfig } from './connectionsConfig';
 
 dotenv.config();
 
 interface ClientCredentialsBody {
   client_id: string;
   client_secret: string;
-  scope: string;
+  scope?: string;
   grant_type: 'client_credentials';
 }
 
-interface FerryConnection {
-  name: string;
-  coordinates: number[][];
-}
-
-interface AisStreamRequestBody {
-  modelType: string;
-  geometry: {
-    type: 'Polygon';
-    coordinates: number[][][];
-  };
-  modelFormat: string;
-  downsample: boolean;
-}
-
-interface VesselEvent {
-  imoNumber?: number | string;
-}
-
-export class SSE_TO_MQTT_BRIDGE {
-  private publisher: MqttPublisher;
-  private tokenProvider: BearerTokenProvider<ClientCredentialsBody>;
-  private readonly streamingEndpoint: string;
-  private readonly providers: SseDataProvider<AisStreamRequestBody>[] = [];
-
-  constructor() {
-    const { MQTT_BROKER_URL, MQTT_TOPIC, MQTT_USERNAME, MQTT_PASSWORD } = process.env;
-
-    if (!MQTT_BROKER_URL || !MQTT_TOPIC) {
-      throw new Error('Missing MQTT configuration in .env');
-    }
-
-    this.publisher = new MqttPublisher({
-      brokerUrl: MQTT_BROKER_URL,
-      baseTopic: MQTT_TOPIC,
-      username: MQTT_USERNAME,
-      password: MQTT_PASSWORD
-    });
-
-    const { STREAMING_ENDPOINT, AUTHENTICATION_URL, CLIENT_ID, CLIENT_SECRET, CLIENT_SCOPE } = process.env;
-
-    if (!STREAMING_ENDPOINT) {
-      throw new Error('Missing STREAMING_ENDPOINT in .env');
-    }
-
-    this.streamingEndpoint = STREAMING_ENDPOINT;
-
-    if (!AUTHENTICATION_URL || !CLIENT_ID || !CLIENT_SECRET || !CLIENT_SCOPE) {
-      throw new Error('Missing authentication configuration in .env');
-    }
-
-    this.tokenProvider = new BearerTokenProvider<ClientCredentialsBody>({
-      url: AUTHENTICATION_URL,
-      bodyType: BodyType.FormUrlEncoded,
-      body: {
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        scope: CLIENT_SCOPE,
-        grant_type: 'client_credentials'
-      }
-    });
+function requireEnv(...keys: string[]): Record<string, string> {
+  const missing = keys.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Missing configuration in .env: ${missing.join(', ')}`);
   }
-
-  public async startMultipleStreams(ferryConnections: FerryConnection[]): Promise<void> {
-    for (const { name, coordinates } of ferryConnections) {
-      const provider = new SseDataProvider<AisStreamRequestBody>({
-        name,
-        url: this.streamingEndpoint,
-        tokenProvider: this.tokenProvider,
-        body: {
-          modelType: 'Full',
-          geometry: {
-            type: 'Polygon',
-            coordinates: [coordinates]
-          },
-          modelFormat: 'Json',
-          downsample: false
-        },
-        onMessage: (data: string) => this.publishVesselEvent(name, data)
-      });
-
-      this.providers.push(provider);
-      await provider.start();
-    }
-  }
-
-  private publishVesselEvent(name: string, eventData: string): void {
-    let event: VesselEvent;
-    try {
-      event = JSON.parse(eventData) as VesselEvent;
-    } catch (error: unknown) {
-      console.error(`❌ Failed to parse event for "${name}":`, error instanceof Error ? error.message : String(error));
-      return;
-    }
-
-    if (!event?.imoNumber) return;
-
-    this.publisher.publish([name, String(event.imoNumber)], eventData).catch(() => {
-      // already logged by MqttPublisher
-    });
-  }
+  return Object.fromEntries(keys.map((key) => [key, process.env[key] as string]));
 }
 
-const streamer = new SSE_TO_MQTT_BRIDGE();
-streamer.startMultipleStreams(coordinateSets);
+// OAuth2 client credentials, enabled only when AUTHENTICATION_URL is set
+function createTokenProvider(): TokenProvider | undefined {
+  if (!process.env.AUTHENTICATION_URL) return undefined;
+
+  const env = requireEnv('AUTHENTICATION_URL', 'CLIENT_ID', 'CLIENT_SECRET');
+
+  return new BearerTokenProvider<ClientCredentialsBody>({
+    url: env.AUTHENTICATION_URL,
+    bodyType: BodyType.FormUrlEncoded,
+    body: {
+      client_id: env.CLIENT_ID,
+      client_secret: env.CLIENT_SECRET,
+      scope: process.env.CLIENT_SCOPE || undefined,
+      grant_type: 'client_credentials'
+    }
+  });
+}
+
+const env = requireEnv('STREAMING_ENDPOINT', 'MQTT_BROKER_URL', 'MQTT_TOPIC');
+
+const bridge = new SseToMqttBridge({
+  endpoint: env.STREAMING_ENDPOINT,
+  tokenProvider: createTokenProvider(),
+  mqtt: {
+    brokerUrl: env.MQTT_BROKER_URL,
+    baseTopic: env.MQTT_TOPIC,
+    username: process.env.MQTT_USERNAME,
+    password: process.env.MQTT_PASSWORD
+  },
+  connections: loadConnectionsConfig(process.env.CONNECTIONS_CONFIG || 'config/connections.json')
+});
+
+void bridge.start();
