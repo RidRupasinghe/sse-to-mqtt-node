@@ -2,6 +2,7 @@ import readline from 'readline';
 import { Readable } from 'stream';
 import { ReadableStream as WebReadableStream } from 'stream/web';
 import { HttpError, describeError } from './errors';
+import { SseEvent, SseParser } from './SseParser';
 
 export interface TokenProvider {
   getBearerToken(): Promise<string>;
@@ -24,7 +25,8 @@ export type SseDataProviderOptions<TBody extends object> = SseRequest<TBody> & {
   headers?: Record<string, string>;
   tokenProvider?: TokenProvider;
   retry?: Partial<RetryOptions>;
-  onMessage: (data: string) => void;
+  /** Called for every dispatched event with its data and the full parsed event. */
+  onMessage: (data: string, event: SseEvent) => void;
 };
 
 const DEFAULT_RETRY: RetryOptions = {
@@ -40,7 +42,8 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
   private readonly headers: Record<string, string>;
   private readonly tokenProvider?: TokenProvider;
   private readonly retry: RetryOptions;
-  private readonly onMessage: (data: string) => void;
+  private readonly onMessage: (data: string, event: SseEvent) => void;
+  private readonly parser: SseParser;
 
   private retryCount = 0;
   private retryTimer?: NodeJS.Timeout;
@@ -60,6 +63,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     this.tokenProvider = options.tokenProvider;
     this.retry = { ...DEFAULT_RETRY, ...options.retry };
     this.onMessage = options.onMessage;
+    this.parser = new SseParser((event: SseEvent) => this.onMessage(event.data, event));
   }
 
   public async start(): Promise<void> {
@@ -111,11 +115,8 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
       crlfDelay: Infinity
     });
 
-    rl.on('line', (line: string) => {
-      if (line.startsWith('data:')) {
-        this.onMessage(line.replace(/^data:\s*/, ''));
-      }
-    });
+    this.parser.reset();
+    rl.on('line', (line: string) => this.parser.push(line));
 
     rl.on('close', () => {
       if (this.stopped) return;
@@ -151,6 +152,10 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
       headers['Content-Type'] = 'application/json';
     }
 
+    if (this.parser.lastEventId) {
+      headers['Last-Event-ID'] = this.parser.lastEventId;
+    }
+
     if (this.tokenProvider) {
       headers.Authorization = `Bearer ${await this.tokenProvider.getBearerToken()}`;
     }
@@ -159,7 +164,8 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
   }
 
   private scheduleReconnect(): void {
-    const delay = Math.min(this.retry.maxDelayMs, this.retry.initialDelayMs * Math.pow(2, this.retryCount));
+    const initialDelayMs = this.parser.retryMs ?? this.retry.initialDelayMs;
+    const delay = Math.min(this.retry.maxDelayMs, initialDelayMs * Math.pow(2, this.retryCount));
     this.retryCount++;
 
     console.log(`🔁 Retrying "${this.name}" in ${delay / 1000}s...`);
