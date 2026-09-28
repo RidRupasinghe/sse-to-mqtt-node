@@ -169,12 +169,21 @@ Tokens are cached until `expires_in` (minus `expiryMarginMs`, default 30s), conc
 
 ## Docker
 
-The repository's `Dockerfile` runs the CLI with `CONNECTIONS_CONFIG=config/connections.json`. Mount your own config and pass the environment:
+Images for `linux/amd64` and `linux/arm64` are published to GitHub Container Registry with every release (from the next release after 0.1.1):
 
 ```bash
-docker build -t sse-to-mqtt-node .
-docker run --env-file .env -v "$PWD/connections.json:/app/config/connections.json:ro" sse-to-mqtt-node
+docker run -d --name sse-to-mqtt-node \
+  --env-file .env \
+  -v "$PWD/connections.json:/config/connections.json:ro" \
+  ghcr.io/ridrupasinghe/sse-to-mqtt-node:latest
 ```
+
+- Mount your connections file at `/config/connections.json` (or set `CONNECTIONS_CONFIG` to another path you mount).
+- Pass the environment variables from the table above with `--env-file` or `-e`. Inside a container, `localhost` is the container itself: use `host.docker.internal` (Docker Desktop) or the broker's hostname.
+- Tags: an exact version (`0.1.2`), the latest patch of a minor (`0.1`), or `latest`. Pin a version in production.
+- The image runs as a non-root user, and `docker stop` shuts the bridge down cleanly.
+
+To build the image yourself: `docker build -t sse-to-mqtt-node .`
 
 ## Development
 
