@@ -1,0 +1,76 @@
+[
+  {
+    "name": "Flakk-Rørvik",
+    "method": "POST",
+    "topic": "{name}/{imoNumber}",
+    "body": {
+      "modelType": "Full",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              10.101017,
+              63.496667
+            ],
+            [
+              10.170916,
+              63.438322
+            ],
+            [
+              10.268686,
+              63.452632
+            ],
+            [
+              10.170771,
+              63.528501
+            ],
+            [
+              10.101017,
+              63.496667
+            ]
+          ]
+        ]
+      },
+      "modelFormat": "Json",
+      "downsample": false
+    }
+  },
+  {
+    "name": "Moss-Horten",
+    "method": "POST",
+    "topic": "{name}/{imoNumber}",
+    "body": {
+      "modelType": "Full",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              10.668885,
+              59.449236
+            ],
+            [
+              10.496159,
+              59.427641
+            ],
+            [
+              10.478561,
+              59.398982
+            ],
+            [
+              10.649021,
+              59.394696
+            ],
+            [
+              10.668885,
+              59.449236
+            ]
+          ]
+        ]
+      },
+      "modelFormat": "Json",
+      "downsample": false
+    }
+  }
+]

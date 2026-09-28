@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Start MQTT broker
+        run: docker run -d --name mosquitto -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+        env:
+          MQTT_TEST_URL: mqtt://127.0.0.1:1883
+      - run: npm run build
+
+      - name: Check package contents
+        run: |
+          npm pack --dry-run --json > pack.json
+          node -e "
+            const files = require('./pack.json')[0].files.map((f) => f.path);
+            const unexpected = files.filter((f) => !/^(dist\/|package\.json$|README\.md$|LICENSE$|CHANGELOG\.md$)/.test(f));
+            if (unexpected.length) { console.error('Unexpected files in package:', unexpected); process.exit(1); }
+            if (!files.includes('dist/index.d.ts') || !files.includes('dist/cli.js')) { console.error('Missing build output'); process.exit(1); }
+            console.log(files.join('\n'));
+          "
