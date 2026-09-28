@@ -1,6 +1,7 @@
-import axios, { AxiosError } from 'axios';
 import readline from 'readline';
 import { Readable } from 'stream';
+import { ReadableStream as WebReadableStream } from 'stream/web';
+import { HttpError, describeError } from './errors';
 
 export interface TokenProvider {
   getBearerToken(): Promise<string>;
@@ -78,22 +79,28 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     this.abortController = new AbortController();
 
     try {
-      const response = await axios.request<Readable>({
-        url: this.url,
+      const response = await fetch(this.url, {
         method: this.method,
-        data: this.body,
         headers: await this.buildHeaders(),
-        responseType: 'stream',
+        body: this.body ? JSON.stringify(this.body) : undefined,
         signal: this.abortController.signal
       });
+
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new HttpError(response.status, response.statusText, this.url);
+      }
+      if (!response.body) {
+        throw new Error('Response has no body');
+      }
 
       console.log(`📡 Connected to SSE for "${this.name}"`);
       this.retryCount = 0;
 
-      this.consumeStream(response.data);
+      this.consumeStream(Readable.fromWeb(response.body as WebReadableStream<Uint8Array>));
     } catch (error: unknown) {
       if (this.stopped) return;
-      console.error(`❌ SSE connection failed for "${this.name}":`, SseDataProvider.describeError(error));
+      console.error(`❌ SSE connection failed for "${this.name}":`, describeError(error));
       this.scheduleReconnect();
     }
   }
@@ -116,16 +123,12 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
       this.scheduleReconnect();
     });
 
+    // readline re-emits input errors; they are reported by the stream handler below
+    rl.on('error', () => undefined);
+
     stream.on('error', (error: Error) => {
       if (!this.stopped) {
         console.error(`❌ SSE stream error for "${this.name}":`, error.message);
-      }
-      rl.close();
-    });
-
-    stream.on('aborted', () => {
-      if (!this.stopped) {
-        console.warn(`⚠️ Stream aborted for "${this.name}".`);
       }
       rl.close();
     });
@@ -141,7 +144,6 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
   private async buildHeaders(): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
       Accept: 'text/event-stream',
-      Connection: 'keep-alive',
       ...this.headers
     };
 
@@ -162,12 +164,5 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
 
     console.log(`🔁 Retrying "${this.name}" in ${delay / 1000}s...`);
     this.retryTimer = setTimeout(() => void this.connect(), delay);
-  }
-
-  private static describeError(error: unknown): string {
-    if (error instanceof AxiosError) {
-      return `${error.message}${error.response ? ` (status ${error.response.status})` : ''}`;
-    }
-    return error instanceof Error ? error.message : String(error);
   }
 }
