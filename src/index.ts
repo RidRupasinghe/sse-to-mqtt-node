@@ -2,16 +2,40 @@ import dotenv from 'dotenv';
 import axios from 'axios';
 import readline from 'readline';
 import { MQTTPublisher } from './mqttPublisher';
-import { getBearerToken } from './bearerToken';
+import { BearerTokenProvider, BodyType } from './BearerTokenProvider';
 import coordinateSets from './ferry_connection'
 
 dotenv.config();
 
+interface ClientCredentialsBody {
+  client_id: string;
+  client_secret: string;
+  scope: string;
+  grant_type: 'client_credentials';
+}
+
 export class SSE_TO_MQTT_BRIDGE {
   private publisher: MQTTPublisher;
+  private tokenProvider: BearerTokenProvider<ClientCredentialsBody>;
 
   constructor() {
     this.publisher = new MQTTPublisher();
+    const { AUTHENTICATION_URL, CLIENT_ID, CLIENT_SECRET, CLIENT_SCOPE } = process.env;
+
+    if (!AUTHENTICATION_URL || !CLIENT_ID || !CLIENT_SECRET || !CLIENT_SCOPE) {
+      throw new Error('Missing authentication configuration in .env');
+    }
+
+    this.tokenProvider = new BearerTokenProvider<ClientCredentialsBody>({
+      url: AUTHENTICATION_URL,
+      bodyType: BodyType.FormUrlEncoded,
+      body: {
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        scope: CLIENT_SCOPE,
+        grant_type: 'client_credentials'
+      }
+    });
   }
 
   public async startMultipleStreams(namedCoordinateSets: { name: string; coordinates: number[][] }[]) {
@@ -22,7 +46,7 @@ export class SSE_TO_MQTT_BRIDGE {
 
   public async getBarentswatchData(name: string, coordinates: number[][], retryCount = 0): Promise<void> {
     try {
-      const bearerToken = await getBearerToken();
+      const bearerToken = await this.tokenProvider.getBearerToken();
 
       console.log(bearerToken)
 
