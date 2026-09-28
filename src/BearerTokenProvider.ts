@@ -1,4 +1,5 @@
 import { HttpError, describeError } from './errors';
+import { Logger, defaultLogger } from './logger';
 
 export enum BodyType {
   Json = 'application/json',
@@ -18,6 +19,7 @@ export interface BearerTokenProviderOptions<TBody extends object> {
   cache?: boolean;
   /** Refresh this long before `expires_in` runs out. Default 30000. */
   expiryMarginMs?: number;
+  logger?: Logger;
 }
 
 interface CachedToken {
@@ -33,6 +35,7 @@ export class BearerTokenProvider<TBody extends object = Record<string, unknown>>
   private readonly tokenFields: string[];
   private readonly cache: boolean;
   private readonly expiryMarginMs: number;
+  private readonly logger: Logger;
 
   private cached?: CachedToken;
   private pending?: Promise<string>;
@@ -49,6 +52,7 @@ export class BearerTokenProvider<TBody extends object = Record<string, unknown>>
     this.tokenFields = options.tokenFields ?? ['access_token', 'token'];
     this.cache = options.cache ?? true;
     this.expiryMarginMs = options.expiryMarginMs ?? 30000;
+    this.logger = options.logger ?? defaultLogger;
   }
 
   /** Returns a cached token when still valid; concurrent callers share one request. */
@@ -97,10 +101,10 @@ export class BearerTokenProvider<TBody extends object = Record<string, unknown>>
         this.cached = { token, expiresAt: this.computeExpiry(data) };
       }
 
-      console.log('✅ Bearer token retrieved');
+      this.logger.debug('Bearer token retrieved');
       return token;
     } catch (error: unknown) {
-      console.error('❌ Failed to retrieve bearer token:', describeError(error));
+      this.logger.error(`Failed to retrieve bearer token: ${describeError(error)}`);
       throw error;
     }
   }

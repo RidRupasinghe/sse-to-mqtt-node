@@ -1,4 +1,5 @@
 import mqtt, { IClientOptions, MqttClient } from 'mqtt';
+import { Logger, defaultLogger } from './logger';
 
 export type QoS = 0 | 1 | 2;
 
@@ -9,6 +10,7 @@ export interface MqttPublisherOptions {
   password?: string;
   qos?: QoS;
   clientOptions?: IClientOptions;
+  logger?: Logger;
 }
 
 export type MqttPayload = string | Buffer | object;
@@ -17,6 +19,7 @@ export class MqttPublisher {
   private readonly client: MqttClient;
   private readonly baseTopic: string;
   private readonly qos: QoS;
+  private readonly logger: Logger;
 
   constructor(options: MqttPublisherOptions) {
     if (!options.brokerUrl || !options.baseTopic) {
@@ -25,6 +28,7 @@ export class MqttPublisher {
 
     this.baseTopic = options.baseTopic;
     this.qos = options.qos ?? 0;
+    this.logger = options.logger ?? defaultLogger;
 
     this.client = mqtt.connect(options.brokerUrl, {
       ...options.clientOptions,
@@ -43,12 +47,12 @@ export class MqttPublisher {
     return new Promise((resolve, reject) => {
       this.client.publish(topic, message, { qos: this.qos }, (error?: Error) => {
         if (error) {
-          console.error(`❌ MQTT publish error on ${topic}:`, error.message);
+          this.logger.error(`MQTT publish to ${topic} failed: ${error.message}`);
           reject(error);
           return;
         }
 
-        console.log(`🚀 Published to MQTT topic: ${topic}`);
+        this.logger.debug(`MQTT published to ${topic}`);
         resolve();
       });
     });
@@ -72,19 +76,19 @@ export class MqttPublisher {
 
   private registerEventHandlers(): void {
     this.client.on('connect', () => {
-      console.log('✅ Connected to MQTT broker');
+      this.logger.info('MQTT connected');
     });
 
     this.client.on('error', (error: Error) => {
-      console.error('❌ MQTT connection error:', error.message);
+      this.logger.error(`MQTT connection error: ${error.message}`);
     });
 
     this.client.on('close', () => {
-      console.warn('📴 MQTT client disconnected');
+      this.logger.warn('MQTT disconnected');
     });
 
     this.client.on('reconnect', () => {
-      console.log('🔄 MQTT client reconnecting...');
+      this.logger.info('MQTT reconnecting');
     });
   }
 }
