@@ -1,8 +1,7 @@
 import dotenv from 'dotenv';
-import axios from 'axios';
-import readline from 'readline';
 import { MqttPublisher } from './MqttPublisher';
 import { BearerTokenProvider, BodyType } from './BearerTokenProvider';
+import { SseDataProvider } from './SseDataProvider';
 import coordinateSets from './ferry_connection'
 
 dotenv.config();
@@ -14,6 +13,21 @@ interface ClientCredentialsBody {
   grant_type: 'client_credentials';
 }
 
+interface FerryConnection {
+  name: string;
+  coordinates: number[][];
+}
+
+interface AisStreamRequestBody {
+  modelType: string;
+  geometry: {
+    type: 'Polygon';
+    coordinates: number[][][];
+  };
+  modelFormat: string;
+  downsample: boolean;
+}
+
 interface VesselEvent {
   imoNumber?: number | string;
 }
@@ -21,6 +35,8 @@ interface VesselEvent {
 export class SSE_TO_MQTT_BRIDGE {
   private publisher: MqttPublisher;
   private tokenProvider: BearerTokenProvider<ClientCredentialsBody>;
+  private readonly streamingEndpoint: string;
+  private readonly providers: SseDataProvider<AisStreamRequestBody>[] = [];
 
   constructor() {
     const { MQTT_BROKER_URL, MQTT_TOPIC, MQTT_USERNAME, MQTT_PASSWORD } = process.env;
@@ -36,7 +52,13 @@ export class SSE_TO_MQTT_BRIDGE {
       password: MQTT_PASSWORD
     });
 
-    const { AUTHENTICATION_URL, CLIENT_ID, CLIENT_SECRET, CLIENT_SCOPE } = process.env;
+    const { STREAMING_ENDPOINT, AUTHENTICATION_URL, CLIENT_ID, CLIENT_SECRET, CLIENT_SCOPE } = process.env;
+
+    if (!STREAMING_ENDPOINT) {
+      throw new Error('Missing STREAMING_ENDPOINT in .env');
+    }
+
+    this.streamingEndpoint = STREAMING_ENDPOINT;
 
     if (!AUTHENTICATION_URL || !CLIENT_ID || !CLIENT_SECRET || !CLIENT_SCOPE) {
       throw new Error('Missing authentication configuration in .env');
@@ -54,76 +76,26 @@ export class SSE_TO_MQTT_BRIDGE {
     });
   }
 
-  public async startMultipleStreams(namedCoordinateSets: { name: string; coordinates: number[][] }[]) {
-    for (const { name, coordinates } of namedCoordinateSets) {
-      await this.getBarentswatchData(name, coordinates); // async fire-and-forget
-    }
-  }
-
-  public async getBarentswatchData(name: string, coordinates: number[][], retryCount = 0): Promise<void> {
-    try {
-      const bearerToken = await this.tokenProvider.getBearerToken();
-
-      console.log(bearerToken)
-
-      const headers = {
-        Authorization: `Bearer ${bearerToken}`,
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-        Connection: 'keep-alive',
-      };
-
-      const postData = {
-        modelType: "Full",
-        geometry: {
-          type: "Polygon",
-          coordinates: [coordinates]
+  public async startMultipleStreams(ferryConnections: FerryConnection[]): Promise<void> {
+    for (const { name, coordinates } of ferryConnections) {
+      const provider = new SseDataProvider<AisStreamRequestBody>({
+        name,
+        url: this.streamingEndpoint,
+        tokenProvider: this.tokenProvider,
+        body: {
+          modelType: 'Full',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [coordinates]
+          },
+          modelFormat: 'Json',
+          downsample: false
         },
-        modelFormat: "Json",
-        downsample: false
-      };
-
-      const response = await axios.post(process.env.STREAMING_ENDPOINT!, postData, {
-        headers,
-        responseType: 'stream'
+        onMessage: (data: string) => this.publishVesselEvent(name, data)
       });
 
-      console.log(`📡 Connected to SSE for "${name}"`);
-
-      const rl = readline.createInterface({
-        input: response.data,
-        crlfDelay: Infinity
-      });
-
-      rl.on('line', (line: string) => {
-        if (line.startsWith('data:')) {
-          const eventData = line.replace(/^data:\s*/, '');
-          this.publishVesselEvent(name, eventData);
-        }
-      });
-
-      rl.on('close', () => {
-        console.warn(`🔌 SSE stream closed for "${name}". Reconnecting...`);
-        this.retryWithBackoffCoordinates(name, coordinates, retryCount);
-      });
-
-      response.data.on('error', (err: any) => {
-        console.error(`❌ SSE stream error for "${name}":`, err.message);
-        rl.close();
-      });
-
-      response.data.on('aborted', () => {
-        console.warn(`⚠️ Stream aborted for "${name}". Retrying...`);
-        rl.close();
-      });
-
-      response.data.on('end', () => {
-        console.warn(`📴 Stream ended for "${name}". Reconnecting...`);
-        rl.close();
-      });
-    } catch (err: any) {
-      console.error(`❌ SSE connection failed for "${name}":`, err.message);
-      this.retryWithBackoffCoordinates(name, coordinates, retryCount);
+      this.providers.push(provider);
+      await provider.start();
     }
   }
 
@@ -141,12 +113,6 @@ export class SSE_TO_MQTT_BRIDGE {
     this.publisher.publish([name, String(event.imoNumber)], eventData).catch(() => {
       // already logged by MqttPublisher
     });
-  }
-
-  private retryWithBackoffCoordinates(name: string, coordinates: number[][], retryCount: number) {
-    const delay = Math.min(30000, 2000 * Math.pow(2, retryCount));
-    console.log(`🔁 Retrying "${name}" in ${delay / 1000}s...`);
-    setTimeout(() => this.getBarentswatchData(name, coordinates, retryCount + 1), delay);
   }
 }
 
