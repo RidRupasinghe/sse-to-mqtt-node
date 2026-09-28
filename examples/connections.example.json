@@ -1,0 +1,17 @@
+[
+  {
+    "name": "ticker",
+    "method": "GET",
+    "url": "/ticker"
+  },
+  {
+    "name": "orders",
+    "method": "POST",
+    "url": "/orders/stream",
+    "headers": { "X-Client": "sse-to-mqtt" },
+    "body": { "region": "eu" },
+    "topic": "{name}/{orderId}",
+    "qos": 1,
+    "retain": false
+  }
+]
