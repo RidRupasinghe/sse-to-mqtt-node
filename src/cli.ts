@@ -9,7 +9,7 @@ import { TokenProvider } from './SseDataProvider';
 import { loadConnectionsConfig } from './connectionsConfig';
 import { LogLevel, Logger, createConsoleLogger } from './logger';
 
-const USAGE = `Usage: sse-to-mqtt --config <connections.json>
+const USAGE = `Usage: sse-to-mqtt-node --config <connections.json>
 
 Bridges Server-Sent Events streams to MQTT topics.
 
@@ -132,6 +132,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error(`sse-to-mqtt: ${error instanceof Error ? error.message : String(error)}`);
+  console.error(`sse-to-mqtt-node: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 });

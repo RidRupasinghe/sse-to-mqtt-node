@@ -1,5 +1,5 @@
 {
-  "name": "sse-to-mqtt",
+  "name": "sse-to-mqtt-node",
   "version": "0.1.1",
   "description": "Bridge Server-Sent Events (SSE) streams to MQTT topics, as a library or a config-driven CLI",
   "keywords": [
@@ -27,7 +27,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "sse-to-mqtt": "dist/cli.js"
+    "sse-to-mqtt-node": "dist/cli.js"
   },
   "exports": {
     ".": {
