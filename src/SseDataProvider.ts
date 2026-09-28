@@ -46,6 +46,8 @@ export type SseDataProviderOptions<TBody extends object> = SseRequest<TBody> & {
   headers?: Record<string, string>;
   tokenProvider?: TokenProvider;
   retry?: Partial<RetryOptions>;
+  /** Fail the attempt if response headers don't arrive within this time. Default 30000. */
+  connectTimeoutMs?: number;
   logger?: Logger;
   hooks?: SseDataProviderHooks;
   /** Called for every dispatched event with its data and the full parsed event. */
@@ -71,6 +73,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
   private readonly parser: SseParser;
   private readonly logger: Logger;
   private readonly hooks: SseDataProviderHooks;
+  private readonly connectTimeoutMs: number;
 
   private retryCount = 0;
   private retryTimer?: NodeJS.Timeout;
@@ -92,6 +95,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     this.onMessage = options.onMessage;
     this.logger = options.logger ?? defaultLogger;
     this.hooks = options.hooks ?? {};
+    this.connectTimeoutMs = options.connectTimeoutMs ?? 30000;
     this.parser = new SseParser((event: SseEvent) => this.onMessage(event.data, event));
   }
 
@@ -110,14 +114,20 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     if (this.stopped) return;
 
     this.abortController = new AbortController();
+    const abortController = this.abortController;
+    const connectTimer = setTimeout(
+      () => abortController.abort(new Error(`No response within ${this.connectTimeoutMs}ms`)),
+      this.connectTimeoutMs
+    );
 
     try {
       const response = await fetch(this.url, {
         method: this.method,
         headers: await this.buildHeaders(),
         body: this.body ? JSON.stringify(this.body) : undefined,
-        signal: this.abortController.signal
+        signal: abortController.signal
       });
+      clearTimeout(connectTimer);
 
       if (!response.ok) {
         await response.body?.cancel();
@@ -136,6 +146,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
 
       this.consumeStream(Readable.fromWeb(response.body as WebReadableStream<Uint8Array>));
     } catch (error: unknown) {
+      clearTimeout(connectTimer);
       if (this.stopped) return;
       this.logger.error(`SSE connection failed for "${this.name}": ${describeError(error)}`);
       this.hooks.onError?.(error instanceof Error ? error : new Error(String(error)));
