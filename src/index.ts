@@ -1,8 +1,8 @@
 export { SseToMqttBridge } from './SseToMqttBridge';
-export type { SseConnection, SseToMqttBridgeOptions, TopicResolver, TopicSegments } from './SseToMqttBridge';
+export type { SseConnection, SseToMqttBridgeEvents, SseToMqttBridgeOptions, TopicResolver, TopicSegments } from './SseToMqttBridge';
 
 export { SseDataProvider } from './SseDataProvider';
-export type { HttpMethod, RetryOptions, SseDataProviderOptions, SseRequest, TokenProvider } from './SseDataProvider';
+export type { HttpMethod, RetryOptions, SseDataProviderHooks, SseDataProviderOptions, SseRequest, TokenProvider } from './SseDataProvider';
 
 export { SseParser } from './SseParser';
 export type { SseEvent } from './SseParser';

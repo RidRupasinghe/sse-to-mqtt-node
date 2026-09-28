@@ -1,5 +1,7 @@
+import { EventEmitter } from 'events';
 import { MqttPublisher, MqttPublisherOptions } from './MqttPublisher';
 import { RetryOptions, SseDataProvider, SseRequest, TokenProvider } from './SseDataProvider';
+import { SseEvent } from './SseParser';
 import { describeError } from './errors';
 import { Logger, defaultLogger } from './logger';
 
@@ -28,6 +30,18 @@ export interface SseToMqttBridgeOptions<TBody extends object = Record<string, un
   logger?: Logger;
 }
 
+/** Events emitted by SseToMqttBridge; each listener receives the connection name first. */
+export interface SseToMqttBridgeEvents {
+  connected: [connection: string];
+  disconnected: [connection: string, error: Error | undefined];
+  reconnecting: [connection: string, delayMs: number, attempt: number];
+  gaveUp: [connection: string];
+  message: [connection: string, event: SseEvent];
+  published: [connection: string, topic: string, payload: string];
+  /** Only emitted when there is at least one listener, so it never crashes the process. */
+  error: [error: Error, connection: string];
+}
+
 const PLACEHOLDER = /\{([^{}]+)\}/g;
 
 // Parses the message only if a template needs a field from it
@@ -50,12 +64,14 @@ class LazyJson {
   }
 }
 
-export class SseToMqttBridge<TBody extends object = Record<string, unknown>> {
+export class SseToMqttBridge<TBody extends object = Record<string, unknown>> extends EventEmitter<SseToMqttBridgeEvents> {
   private readonly publisher: MqttPublisher;
   private readonly providers: SseDataProvider<TBody>[];
   private readonly logger: Logger;
 
   constructor(options: SseToMqttBridgeOptions<TBody>) {
+    super();
+
     if (!options.endpoint) {
       throw new Error('SseToMqttBridge requires an endpoint');
     }
@@ -93,7 +109,17 @@ export class SseToMqttBridge<TBody extends object = Record<string, unknown>> {
       tokenProvider: options.tokenProvider,
       retry: options.retry,
       logger: this.logger,
-      onMessage: (data: string) => this.handleMessage(connection, data)
+      hooks: {
+        onConnected: () => this.emit('connected', connection.name),
+        onDisconnected: (error?: Error) => this.emit('disconnected', connection.name, error),
+        onError: (error: Error) => this.emitError(error, connection.name),
+        onReconnecting: (delayMs: number, attempt: number) => this.emit('reconnecting', connection.name, delayMs, attempt),
+        onGaveUp: () => this.emit('gaveUp', connection.name)
+      },
+      onMessage: (data: string, event: SseEvent) => {
+        this.emit('message', connection.name, event);
+        this.handleMessage(connection, data);
+      }
     });
   }
 
@@ -104,14 +130,23 @@ export class SseToMqttBridge<TBody extends object = Record<string, unknown>> {
       topic = SseToMqttBridge.resolveTopic(connection, data);
     } catch (error: unknown) {
       this.logger.error(`Failed to resolve topic for "${connection.name}": ${describeError(error)}`);
+      this.emitError(error instanceof Error ? error : new Error(String(error)), connection.name);
       return;
     }
 
     if (!topic || topic.length === 0) return;
 
-    this.publisher.publish(topic, data).catch(() => {
-      // already logged by MqttPublisher
-    });
+    const relativeTopic = Array.isArray(topic) ? topic.join('/') : topic;
+    this.publisher.publish(topic, data).then(
+      () => this.emit('published', connection.name, relativeTopic, data),
+      (error: Error) => this.emitError(error, connection.name) // already logged by MqttPublisher
+    );
+  }
+
+  private emitError(error: Error, connection: string): void {
+    if (this.listenerCount('error') > 0) {
+      this.emit('error', error, connection);
+    }
   }
 
   private static resolveTopic<TBody extends object>(connection: SseConnection<TBody>, data: string): TopicSegments | undefined {

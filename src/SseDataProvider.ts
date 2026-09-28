@@ -28,6 +28,18 @@ export type SseRequest<TBody extends object> =
 
 export type HttpMethod = SseRequest<object>['method'];
 
+/** Optional lifecycle callbacks for a connection. */
+export interface SseDataProviderHooks {
+  onConnected?(): void;
+  /** The open stream closed or errored; a reconnect follows unless stopped. */
+  onDisconnected?(error?: Error): void;
+  /** A connection attempt failed (HTTP error, network error, token error). */
+  onError?(error: Error): void;
+  onReconnecting?(delayMs: number, attempt: number): void;
+  /** maxRetries was reached; the provider has stopped. */
+  onGaveUp?(): void;
+}
+
 export type SseDataProviderOptions<TBody extends object> = SseRequest<TBody> & {
   name: string;
   url: string;
@@ -35,6 +47,7 @@ export type SseDataProviderOptions<TBody extends object> = SseRequest<TBody> & {
   tokenProvider?: TokenProvider;
   retry?: Partial<RetryOptions>;
   logger?: Logger;
+  hooks?: SseDataProviderHooks;
   /** Called for every dispatched event with its data and the full parsed event. */
   onMessage: (data: string, event: SseEvent) => void;
 };
@@ -57,6 +70,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
   private readonly onMessage: (data: string, event: SseEvent) => void;
   private readonly parser: SseParser;
   private readonly logger: Logger;
+  private readonly hooks: SseDataProviderHooks;
 
   private retryCount = 0;
   private retryTimer?: NodeJS.Timeout;
@@ -77,6 +91,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     this.retry = { ...DEFAULT_RETRY, ...options.retry };
     this.onMessage = options.onMessage;
     this.logger = options.logger ?? defaultLogger;
+    this.hooks = options.hooks ?? {};
     this.parser = new SseParser((event: SseEvent) => this.onMessage(event.data, event));
   }
 
@@ -116,12 +131,14 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
       }
 
       this.logger.info(`SSE connected: "${this.name}"`);
+      this.hooks.onConnected?.();
       this.retryCount = 0;
 
       this.consumeStream(Readable.fromWeb(response.body as WebReadableStream<Uint8Array>));
     } catch (error: unknown) {
       if (this.stopped) return;
       this.logger.error(`SSE connection failed for "${this.name}": ${describeError(error)}`);
+      this.hooks.onError?.(error instanceof Error ? error : new Error(String(error)));
       this.scheduleReconnect();
     }
   }
@@ -132,12 +149,15 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
       crlfDelay: Infinity
     });
 
+    let streamError: Error | undefined;
+
     this.parser.reset();
     rl.on('line', (line: string) => this.parser.push(line));
 
     rl.on('close', () => {
       if (this.stopped) return;
       this.logger.warn(`SSE stream closed for "${this.name}"`);
+      this.hooks.onDisconnected?.(streamError);
       this.scheduleReconnect();
     });
 
@@ -147,6 +167,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     stream.on('error', (error: Error) => {
       if (!this.stopped) {
         this.logger.error(`SSE stream error for "${this.name}": ${error.message}`);
+        streamError = error;
       }
       rl.close();
     });
@@ -184,6 +205,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     if (this.retryCount >= this.retry.maxRetries) {
       this.logger.error(`Giving up on "${this.name}" after ${this.retryCount} retries`);
       this.stop();
+      this.hooks.onGaveUp?.();
       return;
     }
 
@@ -194,6 +216,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     this.retryCount++;
 
     this.logger.info(`Reconnecting "${this.name}" in ${delay}ms`);
+    this.hooks.onReconnecting?.(delay, this.retryCount);
     this.retryTimer = setTimeout(() => void this.connect(), delay);
   }
 }
