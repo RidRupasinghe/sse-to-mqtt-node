@@ -60,14 +60,62 @@ describe('BearerTokenProvider', () => {
   });
 
   it('refreshes after expiry and after invalidate()', async () => {
-    server = await startServer((_req, res, _body, count) => json(res, 200, { access_token: `t${count}`, expires_in: 1 }));
-    const provider = new BearerTokenProvider({ url: server.url, bodyType: BodyType.Json, body: {}, expiryMarginMs: 950 });
+    server = await startServer((_req, res, _body, count) => json(res, 200, { access_token: `t${count}`, expires_in: 0.1 }));
+    const provider = new BearerTokenProvider({ url: server.url, bodyType: BodyType.Json, body: {}, expiryMarginMs: 20 });
 
     await expect(provider.getBearerToken()).resolves.toBe('t1');
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     await expect(provider.getBearerToken()).resolves.toBe('t2');
     provider.invalidate();
     await expect(provider.getBearerToken()).resolves.toBe('t3');
+  });
+
+  it('uses tokenLifetimeMs minus the margin when the response has no expires_in', async () => {
+    server = await startServer((_req, res) => json(res, 200, { access_token: 't' }));
+    const provider = new BearerTokenProvider({ url: server.url, bodyType: BodyType.Json, body: {}, tokenLifetimeMs: 3600000 });
+
+    const before = Date.now();
+    const token = await provider.getBearerToken();
+    const refreshAt = provider.refreshAt(token) ?? 0;
+
+    expect(refreshAt).toBeGreaterThanOrEqual(before + 3300000);
+    expect(refreshAt).toBeLessThanOrEqual(Date.now() + 3300000);
+    expect(provider.refreshAt('other')).toBeUndefined();
+  });
+
+  it('uses the shorter of expires_in and tokenLifetimeMs, capping the margin at half the lifetime', async () => {
+    server = await startServer((_req, res) => json(res, 200, { access_token: 't', expires_in: '60' }));
+    const provider = new BearerTokenProvider({ url: server.url, bodyType: BodyType.Json, body: {}, tokenLifetimeMs: 3600000 });
+
+    const before = Date.now();
+    const refreshAt = provider.refreshAt(await provider.getBearerToken()) ?? 0;
+
+    expect(refreshAt).toBeGreaterThanOrEqual(before + 30000);
+    expect(refreshAt).toBeLessThanOrEqual(Date.now() + 30000);
+  });
+
+  it('assumes a 1 hour lifetime when neither expires_in nor tokenLifetimeMs is given', async () => {
+    server = await startServer((_req, res) => json(res, 200, { access_token: 't' }));
+    const provider = new BearerTokenProvider({ url: server.url, bodyType: BodyType.Json, body: {} });
+
+    const before = Date.now();
+    const refreshAt = provider.refreshAt(await provider.getBearerToken()) ?? 0;
+
+    expect(refreshAt).toBeGreaterThanOrEqual(before + 3300000);
+    expect(refreshAt).toBeLessThanOrEqual(Date.now() + 3300000);
+  });
+
+  it('prefers a longer expires_in over the default lifetime', async () => {
+    server = await startServer((_req, res) => json(res, 200, { access_token: 't', expires_in: 7200 }));
+    const provider = new BearerTokenProvider({ url: server.url, bodyType: BodyType.Json, body: {} });
+
+    const before = Date.now();
+    expect(provider.refreshAt(await provider.getBearerToken()) ?? 0).toBeGreaterThanOrEqual(before + 6900000);
+  });
+
+  it('rejects invalid lifetimes and margins', () => {
+    expect(() => new BearerTokenProvider({ url: 'http://x', bodyType: BodyType.Json, body: {}, tokenLifetimeMs: 0 })).toThrow(/tokenLifetimeMs/);
+    expect(() => new BearerTokenProvider({ url: 'http://x', bodyType: BodyType.Json, body: {}, expiryMarginMs: -1 })).toThrow(/expiryMarginMs/);
   });
 
   it('does not cache when cache is false', async () => {

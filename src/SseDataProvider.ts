@@ -9,6 +9,11 @@ export interface TokenProvider {
   getBearerToken(): Promise<string>;
   /** Called when the server rejects the token (HTTP 401) so the next call fetches a fresh one. */
   invalidate?(): void;
+  /**
+   * When `token` is due for refresh (epoch ms), or undefined if unknown. An open connection
+   * reconnects with a fresh token at that time instead of keeping the stream on an expiring one.
+   */
+  refreshAt?(token: string): number | undefined;
 }
 
 export interface RetryOptions {
@@ -54,6 +59,11 @@ export type SseDataProviderOptions<TBody extends object> = SseRequest<TBody> & {
   onMessage: (data: string, event: SseEvent) => void;
 };
 
+// Lower bound between token-refresh reconnects, so a bad expiry can't cause a reconnect loop
+const MIN_TOKEN_REFRESH_DELAY_MS = 1000;
+// setTimeout fires immediately for delays above this
+const MAX_TIMER_DELAY_MS = 2 ** 31 - 1;
+
 const DEFAULT_RETRY: RetryOptions = {
   initialDelayMs: 2000,
   maxDelayMs: 30000,
@@ -77,8 +87,10 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
 
   private retryCount = 0;
   private retryTimer?: NodeJS.Timeout;
+  private tokenRefreshTimer?: NodeJS.Timeout;
   private abortController?: AbortController;
   private stopped = false;
+  private refreshingToken = false;
 
   constructor(options: SseDataProviderOptions<TBody>) {
     if (!options.url) {
@@ -107,6 +119,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
   public stop(): void {
     this.stopped = true;
     clearTimeout(this.retryTimer);
+    clearTimeout(this.tokenRefreshTimer);
     this.abortController?.abort();
   }
 
@@ -121,9 +134,10 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     );
 
     try {
+      const token = await this.tokenProvider?.getBearerToken();
       const response = await fetch(this.url, {
         method: this.method,
-        headers: await this.buildHeaders(),
+        headers: this.buildHeaders(token),
         body: this.body ? JSON.stringify(this.body) : undefined,
         signal: abortController.signal
       });
@@ -143,6 +157,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
       this.logger.info(`SSE connected: "${this.name}"`);
       this.hooks.onConnected?.();
       this.retryCount = 0;
+      if (token !== undefined) this.scheduleTokenRefresh(token);
 
       this.consumeStream(Readable.fromWeb(response.body as WebReadableStream<Uint8Array>));
     } catch (error: unknown) {
@@ -166,7 +181,16 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     rl.on('line', (line: string) => this.parser.push(line));
 
     rl.on('close', () => {
+      clearTimeout(this.tokenRefreshTimer);
       if (this.stopped) return;
+
+      if (this.refreshingToken) {
+        this.refreshingToken = false;
+        this.hooks.onDisconnected?.();
+        void this.connect();
+        return;
+      }
+
       this.logger.warn(`SSE stream closed for "${this.name}"`);
       this.hooks.onDisconnected?.(streamError);
       this.scheduleReconnect();
@@ -176,7 +200,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     rl.on('error', () => undefined);
 
     stream.on('error', (error: Error) => {
-      if (!this.stopped) {
+      if (!this.stopped && !this.refreshingToken) {
         this.logger.error(`SSE stream error for "${this.name}": ${error.message}`);
         streamError = error;
       }
@@ -191,7 +215,7 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
     });
   }
 
-  private async buildHeaders(): Promise<Record<string, string>> {
+  private buildHeaders(token: string | undefined): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: 'text/event-stream',
       ...this.headers
@@ -205,11 +229,31 @@ export class SseDataProvider<TBody extends object = Record<string, unknown>> {
       headers['Last-Event-ID'] = this.parser.lastEventId;
     }
 
-    if (this.tokenProvider) {
-      headers.Authorization = `Bearer ${await this.tokenProvider.getBearerToken()}`;
+    if (token !== undefined) {
+      headers.Authorization = `Bearer ${token}`;
     }
 
     return headers;
+  }
+
+  // Reconnect with a fresh token shortly before the current one expires
+  private scheduleTokenRefresh(token: string): void {
+    const refreshAt = this.tokenProvider?.refreshAt?.(token);
+    if (refreshAt === undefined || !Number.isFinite(refreshAt)) return;
+
+    const delay = Math.min(MAX_TIMER_DELAY_MS, Math.max(MIN_TOKEN_REFRESH_DELAY_MS, refreshAt - Date.now()));
+    this.logger.debug(`Token for "${this.name}" is due for refresh in ${delay}ms`);
+
+    clearTimeout(this.tokenRefreshTimer);
+    this.tokenRefreshTimer = setTimeout(() => {
+      if (Date.now() < refreshAt - MIN_TOKEN_REFRESH_DELAY_MS) {
+        this.scheduleTokenRefresh(token); // capped timer fired early
+        return;
+      }
+      this.logger.info(`Token for "${this.name}" is due for refresh, reconnecting`);
+      this.refreshingToken = true;
+      this.abortController?.abort();
+    }, delay);
   }
 
   private scheduleReconnect(): void {

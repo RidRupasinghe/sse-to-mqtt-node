@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `BearerTokenProvider` option `tokenLifetimeMs` for token (e.g. JWT) lifetimes, and `refreshAt(token)`.
+- Open SSE connections reconnect with a fresh token before the current one expires, when the token provider implements the new optional `TokenProvider.refreshAt(token)`.
+- CLI environment variables `TOKEN_LIFETIME_SECONDS` and `TOKEN_REFRESH_MARGIN_SECONDS`.
+
+### Changed
+
+- `BearerTokenProvider` tokens without `expires_in` are now assumed to be valid for 1 hour (previously cached indefinitely).
+- `BearerTokenProvider` `expiryMarginMs` now defaults to 5 minutes (was 30 seconds) and is capped at half the token lifetime.
+
 ## [0.1.2] - 2026-09-28
 
 ### Added

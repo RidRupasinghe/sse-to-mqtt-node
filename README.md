@@ -53,8 +53,10 @@ Events from `/ticker` are published to `example/ticker`; events from `/orders/st
 | `MQTT_TOPIC` | yes | Base topic prefixed to every published topic |
 | `MQTT_USERNAME`, `MQTT_PASSWORD` | no | Broker credentials |
 | `CONNECTIONS_CONFIG` | no | Config path, if `--config` is not given |
-| `AUTHENTICATION_URL` | no | Enables OAuth2 client credentials; then `CLIENT_ID` and `CLIENT_SECRET` are required |
+| `AUTHENTICATION_URL` | no | Enables OAuth2 client credentials; then `CLIENT_ID` and `CLIENT_SECRET` are required. Without it the SSE endpoint is called without an `Authorization` header |
 | `CLIENT_ID`, `CLIENT_SECRET`, `CLIENT_SCOPE` | no | OAuth2 client credentials (`CLIENT_SCOPE` is optional) |
+| `TOKEN_LIFETIME_SECONDS` | no | Token (e.g. JWT) lifetime. Defaults to `expires_in` from the token response, or `3600` (1 hour) without it; if both are given the shorter wins |
+| `TOKEN_REFRESH_MARGIN_SECONDS` | no | Reconnect with a fresh token this long before it expires (default `300`) |
 | `LOG_LEVEL` | no | `debug`, `info` (default), `warn` or `error` |
 
 The CLI stops cleanly on `SIGINT` / `SIGTERM`.
@@ -131,7 +133,7 @@ Connection `topic` can also be a function `(data, connectionName) => string | st
 | `endpoint` | Base URL; each connection's `url` is resolved against it |
 | `connections` | Connections as described above; `transform` and function `topic`s are library-only |
 | `mqtt` | `{ brokerUrl, baseTopic, username?, password?, qos?, retain?, clientOptions? }`, or `{ client, baseTopic }` to reuse an existing [mqtt.js](https://github.com/mqttjs/MQTT.js) client (left open on `stop()`) |
-| `tokenProvider` | Anything with `getBearerToken(): Promise<string>` (and optionally `invalidate()`), e.g. `BearerTokenProvider` |
+| `tokenProvider` | Optional. Anything with `getBearerToken(): Promise<string>` (and optionally `invalidate()` and `refreshAt(token)`), e.g. `BearerTokenProvider`. Without it no `Authorization` header is sent |
 | `headers` | Headers sent on every connection |
 | `retry` | `{ initialDelayMs = 2000, maxDelayMs = 30000, maxRetries = Infinity, jitter = 0.2 }` |
 | `connectTimeoutMs` | Fail an attempt if no response headers arrive in time (default 30000) |
@@ -157,11 +159,16 @@ import { BearerTokenProvider, BodyType } from 'sse-to-mqtt-node';
 const tokenProvider = new BearerTokenProvider({
   url: 'https://auth.example.com/oauth/token',
   bodyType: BodyType.FormUrlEncoded, // or BodyType.Json
-  body: { grant_type: 'client_credentials', client_id: '...', client_secret: '...' }
+  body: { grant_type: 'client_credentials', client_id: '...', client_secret: '...' },
+  tokenLifetimeMs: 30 * 60 * 1000 // optional, default expires_in or 1 hour
 });
 ```
 
-Tokens are cached until `expires_in` (minus `expiryMarginMs`, default 30s), concurrent requests share one token fetch, and a 401 from the SSE server triggers a fresh token. Use `tokenFields` if the token isn't in `access_token` or `token`.
+Authentication is optional; leave out `tokenProvider` for open endpoints.
+
+A token's lifetime comes from `expires_in` in the token response or from `tokenLifetimeMs` (the shorter wins when both are given), and is 1 hour when neither is known. Tokens are cached until `expiryMarginMs` (default 5 minutes, capped at half the lifetime) before they expire. At that point each open SSE connection reconnects with a fresh token, resuming with `Last-Event-ID`, so streams never outlive their token. Concurrent requests share one token fetch, and a 401 from the SSE server triggers a fresh token. Use `tokenFields` if the token isn't in `access_token` or `token`.
+
+A custom `tokenProvider` can implement `refreshAt(token)`, returning the epoch milliseconds at which that token should be replaced, to get the same reconnect behaviour.
 
 ### Building blocks
 

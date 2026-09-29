@@ -24,7 +24,14 @@ Environment (a .env file in the working directory is loaded):
   MQTT_TOPIC            Base topic for all messages (required)
   MQTT_USERNAME, MQTT_PASSWORD
   AUTHENTICATION_URL    Enables OAuth2 client credentials; then CLIENT_ID and
-                        CLIENT_SECRET are required, CLIENT_SCOPE is optional
+                        CLIENT_SECRET are required, CLIENT_SCOPE is optional.
+                        Without it, the SSE endpoint is called unauthenticated
+  TOKEN_LIFETIME_SECONDS
+                        Token (e.g. JWT) lifetime (default expires_in from the
+                        token response, or 3600)
+  TOKEN_REFRESH_MARGIN_SECONDS
+                        Reconnect with a fresh token this long before it
+                        expires (default 300)
   LOG_LEVEL             debug | info | warn | error (default info)`;
 
 interface ClientCredentialsBody {
@@ -52,6 +59,17 @@ function requireEnv(...keys: string[]): Record<string, string> {
   return Object.fromEntries(keys.map((key) => [key, process.env[key] as string]));
 }
 
+function parseSecondsEnv(key: string): number | undefined {
+  const value = process.env[key];
+  if (!value) return undefined;
+
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    throw new Error(`${key} must be a number of seconds`);
+  }
+  return seconds * 1000;
+}
+
 function readVersion(): string {
   const packageJson: unknown = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   const version = (packageJson as { version?: unknown }).version;
@@ -67,6 +85,8 @@ function createTokenProvider(logger: Logger): TokenProvider | undefined {
   return new BearerTokenProvider<ClientCredentialsBody>({
     url: env.AUTHENTICATION_URL,
     bodyType: BodyType.FormUrlEncoded,
+    tokenLifetimeMs: parseSecondsEnv('TOKEN_LIFETIME_SECONDS'),
+    expiryMarginMs: parseSecondsEnv('TOKEN_REFRESH_MARGIN_SECONDS'),
     logger,
     body: {
       client_id: env.CLIENT_ID,

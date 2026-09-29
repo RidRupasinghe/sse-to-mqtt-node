@@ -87,6 +87,42 @@ describe('SseDataProvider', () => {
     expect(server.requests.map((r) => r.headers.authorization)).toEqual(['Bearer old', 'Bearer new']);
   });
 
+  it('sends no Authorization header without a token provider', async () => {
+    server = await startServer((_req, res) => sendEvents(res, [], false));
+    await create({ url: server.url }).start();
+
+    expect(server.requests[0].headers.authorization).toBeUndefined();
+  });
+
+  it('reconnects with a fresh token when the current one is due for refresh', async () => {
+    server = await startServer((_req, res) => sendEvents(res, ['id: 7\ndata: x\n\n'], false));
+    let count = 0;
+    let current = { token: '', refreshAt: 0 };
+    const tokenProvider: TokenProvider = {
+      getBearerToken: async () => {
+        current = { token: `t${++count}`, refreshAt: Date.now() + 1000 };
+        return current.token;
+      },
+      refreshAt: (token) => (token === current.token ? current.refreshAt : undefined)
+    };
+    const events: string[] = [];
+    await create({
+      url: server.url,
+      tokenProvider,
+      hooks: {
+        onConnected: () => events.push('connected'),
+        onDisconnected: (e) => events.push(`disconnected ${e?.message ?? ''}`.trim()),
+        onError: (e) => events.push(`error ${e.message}`)
+      }
+    }).start();
+    await wait(1300);
+    provider?.stop();
+
+    expect(server.requests.map((r) => r.headers.authorization)).toEqual(['Bearer t1', 'Bearer t2']);
+    expect(server.requests[1].headers['last-event-id']).toBe('7');
+    expect(events).toEqual(['connected', 'disconnected', 'connected']);
+  });
+
   it('times out when the server never responds', async () => {
     server = await startServer(() => undefined);
     const errors: string[] = [];
